@@ -1,0 +1,83 @@
+// FrameScout Inter-Process Communication Protocol
+// Defines the wire format between Rust/Tauri core and Python inference worker.
+//
+// Compile with: protoc --python_out=. search.proto (Python)
+// Compile with: prost-build in build.rs (Rust)
+//
+// Version: 3.0.0
+// Author: bobgsning
+
+syntax = "proto3";
+package framescout;
+
+// ============================================================
+// Batch Request: multiple file paths for bulk processing
+// Used during folder scanning — Rust sends chunks of 4 paths at a time
+// ============================================================
+message BatchPaths {
+  repeated string file_paths = 1;
+}
+
+// ============================================================
+// EncodeRequest: The main request message
+// Uses oneof to ensure exactly one payload type per request
+// ============================================================
+message EncodeRequest {
+  string task_id = 1;
+  
+  oneof payload {
+    // Single file path (image or video)
+    // Used for: single-file indexing, image-to-image search
+    string file_path = 2;
+    
+    // Text query for semantic search
+    // Used for: natural language search ("sunset beach with friends")
+    string text = 3;
+    
+    // Batch of file paths for bulk processing
+    // Used for: folder scanning with chunked processing
+    BatchPaths batch = 4;
+  }
+}
+
+// ============================================================
+// ErrorInfo: Structured error response
+// ============================================================
+message ErrorInfo {
+  int32 code = 1;           // HTTP-style error code (500 = internal, 400 = bad request)
+  string message = 2;        // Human-readable error description
+  string context = 3;        // Error context ("ai_inference", "file_read", etc.)
+}
+
+// ============================================================
+// FrameResult: A single indexed media item
+// For images: timestamp = 0.0
+// For videos: timestamp = seconds from start of video
+// ============================================================
+message FrameResult {
+  float timestamp = 1;           // Seconds into video (0.0 for images)
+  repeated float vector = 2;     // 512-dimensional CLIP embedding
+  string ocr_text = 3;          // Extracted text from EasyOCR
+  string file_path = 4;         // Absolute path to source file
+}
+
+// ============================================================
+// SuccessPayload: Contains one or more FrameResults
+// Even single-image requests return an array (for consistency)
+// ============================================================
+message SuccessPayload {
+  repeated FrameResult frames = 1;
+}
+
+// ============================================================
+// EncodeResponse: The main response message
+// Uses oneof to ensure exactly one result type per response
+// ============================================================
+message EncodeResponse {
+  string task_id = 1;
+  
+  oneof result {
+    SuccessPayload success = 2;
+    ErrorInfo error = 3;
+  }
+}

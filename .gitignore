@@ -1,0 +1,58 @@
+# ========== Rust / Tauri ==========
+target/
+src/frontend/src-tauri/target/
+# Cargo.lock is tracked intentionally (application, not library)
+
+# ========== Python ==========
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+env/
+.env
+
+# ========== Node.js / Vue / Vite ==========
+node_modules/
+dist/
+.vite/
+*.local
+
+# ========== IDE ==========
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ========== OS ==========
+.DS_Store
+Thumbs.db
+
+# ========== FrameScout specific ==========
+# Debug logs (generated in temp directory)
+*.log
+
+# Model files (downloaded separately via scripts/download_models.py)
+src/inference-worker/models/
+models/
+
+# Database files (user data)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# License files (commercial keys)
+*.lic
+
+# ========== Tauri ==========
+gen/
+
+# ========== Packaged binaries ==========
+*.exe
+*.dll
+*.dylib

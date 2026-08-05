@@ -1,0 +1,49 @@
+[package]
+name = "framescout-ui"
+version = "3.0.0"
+description = "A fully-local, privacy-first, multi-modal second brain for Windows. Search your images and videos with natural language."
+authors = ["bobgsning <bobGsning@outlook.com>"]
+license = "Apache-2.0"
+edition = "2021"
+repository = "https://github.com/bobgsning/FrameScout"
+readme = "../../README.md"
+keywords = ["ai", "multimodal", "search", "local", "privacy", "desktop", "offline", "windows", "clip", "ocr"]
+categories = ["multimedia", "search", "artificial-intelligence"]
+homepage = "https://github.com/bobgsning/FrameScout"
+
+[lib]
+name = "framescout_ui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+prost-build = "0.12"
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+prost = "0.12"
+zmq = "0.10.0"
+walkdir = "2.5.0"
+rusqlite = { version = "0.40.0", features = ["bundled"] }
+dirs = "6.0.0"
+tauri-plugin-dialog = "2"
+
+ed25519-dalek = "2.1.0"
+base64 = "0.22.0"
+hex = "0.4.3"
+
+# Pro features (gated behind feature flag)
+[features]
+default = []
+pro = ["dep:ed25519-dalek", "dep:base64", "dep:hex"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
