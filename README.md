@@ -1,31 +1,48 @@
-# 🔍 FrameScout
+# 🔍 FrameScout — Offline AI Search
 
-## *A Fully-Offline, Privacy-First, Multi-Modal Desktop Search Engine*
+## *100% Private, Fully Offline, Multi-Modal Desktop Search Engine*
 
-**Search your local images and videos with natural language, OCR text, or visual similarity — 100% private, zero cloud, free and open source (Community Edition).**
+**Search your local images and videos with natural language, OCR text, or visual similarity — no cloud, no telemetry, no accounts. Free & open source (Community Edition).**
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](https://www.microsoft.com/windows)
 ![Architecture](https://img.shields.io/badge/architecture-Rust%20%2B%20Python%20%2B%20Vue-ff69b4)
 [![AI-Assisted](https://img.shields.io/badge/AI--assisted-development-brightgreen)](AI_POLICY.md)
 
+FrameScout is a **fully offline, AI-powered visual search engine** for your local images and videos.  
+Type *"sunset beach with friends"*, paste a reference image, or search by text inside images — and get results in milliseconds. Everything runs on your machine. Nothing leaves your computer.
+
+⬇️ [Download the latest release](https://github.com/bobgsning/FrameScout/releases) ·
+📖 [Quick Start](#-quick-start-development) ·
+🤝 [Contributing](CONTRIBUTING.md)
+
+> **Just want to try it?** Download the latest Windows executable from the [https://github.com/bobgsning/FrameScout/releases](https://github.com/bobgsning/FrameScout/releases) — no installation required. Unzip and run.
+
 ---
 
 ## 🎯 The Problem
 
-Your image library grows faster than your ability to organize it. Existing solutions either compromise privacy (cloud-based) or lack intelligent search (local tools).
+You have hundreds of gigabytes of screenshots, photos, and video clips scattered across your drives.  
+Existing solutions force you to choose between two bad options:
 
-FrameScout is the **first fully offline, AI-powered visual search engine** that respects your privacy and gives you instant, semantic access to your entire media library.
+☁️ **Upload everything to the cloud** — and lose your privacy forever.  
+📁 **Stick with local file explorers** — and spend hours hunting through folders.
 
-| Requirement | FrameScout |
-| ----------- | :--------: |
-| 100% Offline | ✅ |
-| Semantic Search (CLIP) | ✅ |
-| OCR Text Search | ✅ |
-| Video Frame Indexing | ✅ |
-| Visual Clustering | ✅ |
-| No Telemetry | ✅ |
-| Free & Open Source | ✅ |
+FrameScout offers a **third way**: AI-powered search that runs entirely on your machine. No uploads. No subscriptions. No compromises.
+
+---
+
+## 🛠️ Known Limitations (v3.0.0)
+
+We believe in transparency. Here's what FrameScout *doesn't* do yet:
+
+| Limitation | Workaround / Future Plan |
+| ---------- | ------------------------ |
+| Windows 10/11 only (no macOS/Linux yet) | Cross-platform builds planned for future |
+| Video frame extraction uses fixed 1 FPS | Scene-detection based extraction planned |
+| FlatVector search is O(N·d) | Will migrate to Faiss/Annoy when N > 50K |
+| No filesystem real-time monitoring | Manual re-scan; inotify/watchdog planned |
+| No LLM-generated captions | Deliberate — would require network access |
 
 ---
 
@@ -44,45 +61,21 @@ FrameScout is the **first fully offline, AI-powered visual search engine** that 
 
 ---
 
-## 📁 Repository Structure
+## 📁 Repository Structure (Key Directories)
 
 ```text
 FrameScout/
-├── .gitignore
-├── AI_POLICY.md
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-├── LICENSE
+├── src/
+│   ├── frontend/               # Vue 3 + Tauri desktop app (Rust core)
+│   ├── inference-worker/       # Python AI inference engine
+│   └── proto/                  # ZeroMQ communication schema
+├── scripts/                    # Utility scripts (model download, etc.)
 ├── README.md
-├── scripts/
-│   └── download_models.py          # Model download helper
-└── src/
-    ├── frontend/                   # Vue 3 + Tauri desktop app
-    │   ├── App.vue
-    │   ├── package.json
-    │   ├── package-lock.json
-    │   ├── vite.config.ts
-    │   ├── tsconfig.json
-    │   ├── tsconfig.node.json
-    │   └── src-tauri/              # Rust core (Tauri backend)
-    │       ├── capabilities/default.json
-    │       ├── src/
-    │       │   ├── main.rs
-    │       │   └── lib.rs
-    │       ├── build.rs
-    │       ├── Cargo.toml
-    │       ├── Cargo.lock
-    │       ├── tauri.conf.json
-    │       └── .gitignore
-    ├── proto/
-    │   └── search.proto            # Inter-process communication schema
-    └── inference-worker/           # Python AI inference engine
-        ├── main.py
-        ├── search_pb2.py
-        ├── requirements.txt
-        └── README.md               # Worker-specific documentation
-
+├── CONTRIBUTING.md
+└── LICENSE
 ```
+
+Full directory tree available in [TREE.md](./TREE.md).
 
 ---
 
@@ -236,34 +229,6 @@ npm run tauri dev          # Development mode
 
 ---
 
-## 🔐 Privacy Guarantee
-
-FrameScout was built from the ground up to respect your privacy:
-
-- ✅ **Zero network requests** during normal operation *(One-time model download required on first launch; fully offline afterward)*
-- ✅ **Zero telemetry** — no analytics, no usage tracking
-- ✅ **Zero cloud dependency** — works in airplane mode
-- ✅ **Local-only AI** — all inference runs on your CPU/GPU
-- ✅ **Transparent** — open source core, auditable code
-
-You can verify this yourself: run FrameScout with your firewall blocking all outbound traffic. It works perfectly.
-
----
-
-## 🛠️ Known Limitations (v3.0.0)
-
-We believe in transparency. Here's what FrameScout *doesn't* do yet:
-
-| Limitation | Workaround / Future Plan |
-| ---------- | ------------------------ |
-| Windows 10/11 only (no macOS/Linux yet) | Cross-platform builds planned for future |
-| Video frame extraction uses fixed 1 FPS | Scene-detection based extraction planned |
-| FlatVector search is O(N·d) | Will migrate to Faiss/Annoy when N > 50K |
-| No filesystem real-time monitoring | Manual re-scan; inotify/watchdog planned |
-| No LLM-generated captions | Deliberate — would require network access |
-
----
-
 ## 🗺️ Roadmap
 
 ### v3.0.x (Current — Stability & Polish)
@@ -279,6 +244,7 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet:
 
 ### v3.1 (Cross-Platform & UX)
 
+- [ ] SigLIP migration (improved multilingual understanding)
 - [ ] Folder tree sidebar view
 - [ ] Multiple view modes (grid / list / timeline)
 - [ ] Export/Import database (SQLite backup)
@@ -321,7 +287,7 @@ FrameScout core is licensed under **Apache License 2.0**. See [LICENSE](LICENSE)
 
 ## ™️ Trademarks
 
-FrameScout and its logo are trademarks of **AetherFlow Labs Inc.**
+"FrameScout", "FrameScout — Offline AI Search", and the FrameScout logo are trademarks of Bob G. S. Ning.
 
 All other trademarks are the property of their respective owners.
 
@@ -343,6 +309,9 @@ All other trademarks are the property of their respective owners.
 - **Issues & Bug Reports**: [GitHub Issues](https://github.com/bobgsning/FrameScout/issues)
 - **General Questions**: <bobgsning@outlook.com>
 - **Security Concerns**: Please email directly (PGP key available on request)
+
+> 🤝 **We need your help!** FrameScout is a one-person project right now. If you're passionate about privacy-first AI tools, we'd love your contribution — whether it's code, documentation, bug reports, or just testing on your machine.
+> We're currently preparing our first good first issues. In the meantime, feel free to [open a discussion](https://github.com/bobgsning/FrameScout/discussions) or [browse the codebase](https://github.com/bobgsning/FrameScout).
 
 ---
 
