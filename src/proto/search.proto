@@ -4,7 +4,7 @@
 // Compile with: protoc --python_out=. search.proto (Python)
 // Compile with: prost-build in build.rs (Rust)
 //
-// Version: 3.0.0
+// Version: 3.0.1
 // Author: bobgsning
 
 syntax = "proto3";
@@ -44,7 +44,7 @@ message EncodeRequest {
 // ErrorInfo: Structured error response
 // ============================================================
 message ErrorInfo {
-  int32 code = 1;           // HTTP-style error code (500 = internal, 400 = bad request)
+  int32 code = 1;            // HTTP-style error code (500 = internal, 400 = bad request)
   string message = 2;        // Human-readable error description
   string context = 3;        // Error context ("ai_inference", "file_read", etc.)
 }
@@ -56,9 +56,9 @@ message ErrorInfo {
 // ============================================================
 message FrameResult {
   float timestamp = 1;           // Seconds into video (0.0 for images)
-  repeated float vector = 2;     // 512-dimensional CLIP embedding
-  string ocr_text = 3;          // Extracted text from EasyOCR
-  string file_path = 4;         // Absolute path to source file
+  repeated float vector = 2;     // 768-dimensional SigLIP 2 embedding
+  string ocr_text = 3;           // Extracted text from EasyOCR
+  string file_path = 4;          // Absolute path to source file
 }
 
 // ============================================================

@@ -14,15 +14,25 @@ FrameScout/
 │   └── download_models.py          # Model download helper
 └── src/
     ├── frontend/                   # Vue 3 + Tauri desktop app
-    │   ├── App.vue
+    │   ├── src/
+    │   │   ├── App.vue
+    │   │   ├── main.ts
+    │   │   └── vite-env.d.ts
+    │   ├── public/
+    │   │   ├── tauri.svg
+    │   │   └── vite.svg
+    │   ├── .gitignore
     │   ├── package.json
     │   ├── package-lock.json
     │   ├── vite.config.ts
     │   ├── tsconfig.json
     │   ├── tsconfig.node.json
     │   └── src-tauri/              # Rust core (Tauri backend)
+    │       ├── bin/                # Placeholder for packaged ai_worker (generated)
     │       ├── capabilities/default.json
     │       ├── src/
+    │       │   ├── assets/
+    │       │   │   └── vue.svg
     │       │   ├── main.rs
     │       │   └── lib.rs
     │       ├── build.rs
@@ -36,6 +46,11 @@ FrameScout/
         ├── main.py
         ├── search_pb2.py
         ├── requirements.txt
-        └── README.md               # Worker-specific documentation
+        ├── README.md               # Worker-specific documentation
+        └── models/                 # Created by download_models.py (not tracked in git)
+            ├── siglip2-base/
+            └── easyocr/
 
 ```
+
+> **Note:** The `models/` directory under `src/inference-worker/` is created by `download_models.py` and is not tracked in Git. The `bin/` directory under `src/frontend/src-tauri/` is for the packaged `ai_worker` executable (also not tracked).

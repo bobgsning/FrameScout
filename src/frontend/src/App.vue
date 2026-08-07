@@ -278,15 +278,15 @@
         <div class="search-options">
           <label><input type="checkbox" v-model="s_filename" @change="resetAndSearch"/> 📁 Filename</label>
           <label><input type="checkbox" v-model="s_note" @change="resetAndSearch"/> 📝 Note</label>
-          <label><input type="checkbox" v-model="s_ocr" @change="resetAndSearch"/> 👁️ OCR</label>
-          <label><input type="checkbox" v-model="s_vector" @change="resetAndSearch"/> 🧠 Semantic AI</label>
+          <label><input type="checkbox" v-model="s_ocr" @change="resetAndSearch"/> 🔍 OCR</label>
+          <label><input type="checkbox" v-model="s_vector" @change="resetAndSearch"/> 💡 Semantic AI</label>
 
           <div class="option-divider"></div>
 
           <label>
             Items/Page:
             <select v-model="pageSize" @change="resetAndSearch" class="custom-select-sm">
-              <option :value="4">4</option><option :value="8">8</option><option :value="16">16</option><option :value="50">50</option>
+              <option :value="4">4</option><option :value="8">8</option><option :value="16">16</option><option :value="50">50</option><option :value="150">150</option>
             </select>
           </label>
         </div>
@@ -322,51 +322,81 @@
             <span class="missing-icon">👻</span>
             <span>File Unavailable</span>
           </div>
-          <template v-else>
-            <img v-if="!isVideo(item.path)" :src="getAssetUrl(item.path)" @error="item.isMissing=true" class="media-preview" />
-            <video v-else :src="getAssetUrl(item.path)+'#t='+item.timestamp" @error="handleVideoError(item)"
+          <template v-else-if="isVideo(item.path)">
+            <video
+              :src="getAssetUrl(item.path)+'#t='+item.timestamp"
+              @error="handleVideoError(item)"
               @loadeddata="handleVideoLoaded(item)"
               controls preload="metadata"
               class="media-preview"
             ></video>
+            <div class="card-content">
+              <p class="file-path" v-html="highlight(item.path)"></p>
+              <div class="card-meta-row">
+                <p class="badge-timestamp">⏱️ Sec {{ item.timestamp }}</p>
+                <p class="match-score">{{ formatScore(item.score, isImageSearch) }}</p>
+              </div>
+              <div class="tags-wrapper">
+                <span v-for="tag in item.matched_tags.filter((t: string) => !t.includes('Semantic'))" :key="tag" class="tag-badge">{{ tag }}</span>
+                <span v-if="getNumericScore(item.score, isImageSearch) >= 60.0 && item.matched_tags.length === 0" class="tag-badge semantic-tag">💡 Semantic</span>
+                <span v-if="getNumericScore(item.score, isImageSearch) < 60.0 && item.matched_tags.length === 0" class="tag-badge low-tag">👻 Low Confidence</span>
+              </div>
+              <div v-if="item.ocr_text" class="ocr-panel">
+                <p class="ocr-label">🔍 Extracted Text:</p>
+                <p class="ocr-content" :class="{ 'ocr-collapsed': !item.expandOcr }" v-html="highlight(item.ocr_text)"></p>
+                <button v-if="item.ocr_text.length > 50" @click="item.expandOcr = !item.expandOcr" class="btn-text">{{ item.expandOcr ? 'Collapse 🔼' : 'Expand 🔽' }}</button>
+              </div>
+              <div class="note-panel">
+                <p class="note-label">📝 Personal Note (Markdown):</p>
+                <textarea v-model="item.user_note" @blur="saveNote(item)" placeholder="Enter notes..." class="custom-textarea"></textarea>
+              </div>
+            </div>
           </template>
 
-          <div class="card-content">
-            <p class="file-path" v-html="highlight(item.path)"></p>
+          <!-- Image Card: Add Low Score Collapsible Feature -->
+          <template v-else>
+            <img
+              :src="getAssetUrl(item.path)"
+              @error="item.isMissing=true"
+              class="media-preview"
+            />
 
-            <div class="card-meta-row">
-              <p v-if="isVideo(item.path)" class="badge-timestamp">⏱️ Sec {{ item.timestamp }}</p>
-              <p v-else class="type-text">🖼️ Static Image</p>
-              <p class="match-score">{{ formatScore(item.score, isImageSearch) }}</p>
+            <!-- Low Score Collapsible Bar (shown only when collapsedLowScore is true) -->
+            <div v-if="item.collapsedLowScore" class="low-score-collapsed-bar" @click="item.collapsedLowScore = false">
+              <span class="collapse-icon">❌</span>
+              <span class="collapse-text">Low confidence ({{ formatScore(item.score, isImageSearch) }})</span>
+              <span class="expand-arrow">▶</span>
             </div>
 
-            <div class="tags-wrapper">
-              <span v-for="tag in item.matched_tags.filter((t: string) => !t.includes('Semantic'))" :key="tag" class="tag-badge">
-                {{ tag }}
-              </span>
+            <!-- Collapsible Content: Hidden by default for low scores, shown after clicking the prompt -->
+            <div v-show="!item.collapsedLowScore" class="collapsible-content">
+              <p class="file-path" v-html="highlight(item.path)"></p>
+              <div class="card-meta-row">
+                <p class="type-text">🖼️ Static Image</p>
+                <p class="match-score">{{ formatScore(item.score, isImageSearch) }}</p>
+              </div>
+              <div class="tags-wrapper">
+                <span v-for="tag in item.matched_tags.filter((t: string) => !t.includes('Semantic'))" :key="tag" class="tag-badge">{{ tag }}</span>
+                <span v-if="getNumericScore(item.score, isImageSearch) >= 60.0 && item.matched_tags.length === 0" class="tag-badge semantic-tag">💡 Semantic</span>
+                <span v-if="getNumericScore(item.score, isImageSearch) < 60.0 && item.matched_tags.length === 0" class="tag-badge low-tag">👻 Low Confidence</span>
+              </div>
+              <div v-if="item.ocr_text" class="ocr-panel">
+                <p class="ocr-label">🔍 Extracted Text:</p>
+                <p class="ocr-content" :class="{ 'ocr-collapsed': !item.expandOcr }" v-html="highlight(item.ocr_text)"></p>
+                <button v-if="item.ocr_text.length > 50" @click="item.expandOcr = !item.expandOcr" class="btn-text">{{ item.expandOcr ? 'Collapse 🔼' : 'Expand 🔽' }}</button>
+              </div>
+              <div class="note-panel">
+                <p class="note-label">📝 Personal Note (Markdown):</p>
+                <textarea v-model="item.user_note" @blur="saveNote(item)" placeholder="Enter notes..." class="custom-textarea"></textarea>
+              </div>
 
-              <span v-if="getNumericScore(item.score, isImageSearch) >= 60.0 && item.matched_tags.length === 0" class="tag-badge semantic-tag">
-                🧠 Semantic
-              </span>
-
-              <span v-if="getNumericScore(item.score, isImageSearch) < 60.0 && item.matched_tags.length === 0" class="tag-badge low-tag">
-                👻 Low Confidence
-              </span>
+              <!-- Collapse Button (shown only for low-score images) -->
+              <div v-if="item.collapsedLowScore !== undefined" class="collapse-footer">
+                <button @click="item.collapsedLowScore = true" class="btn-collapse-up">▲ Collapse</button>
+              </div>
             </div>
+          </template>
 
-            <div v-if="item.ocr_text" class="ocr-panel">
-              <p class="ocr-label">👁️ Extracted Text:</p>
-              <p class="ocr-content" :class="{ 'ocr-collapsed': !item.expandOcr }" v-html="highlight(item.ocr_text)"></p>
-              <button v-if="item.ocr_text.length > 50" @click="item.expandOcr = !item.expandOcr" class="btn-text">
-                {{ item.expandOcr ? 'Collapse 🔼' : 'Expand 🔽' }}
-              </button>
-            </div>
-
-            <div class="note-panel">
-              <p class="note-label">📝 Personal Note (Markdown):</p>
-              <textarea v-model="item.user_note" id="userNote" @blur="saveNote(item)" placeholder="Enter notes..." class="custom-textarea"></textarea>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -388,7 +418,6 @@
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -408,6 +437,7 @@ interface SearchResult {
   user_note: string
   isMissing?: boolean   // optional property
   expandOcr?: boolean   // optional property
+  collapsedLowScore?: boolean   // optional property
 }
 
 interface ClusterGroup {
@@ -585,14 +615,14 @@ function mapToHumanScore(rawScore: number, isImage: boolean): number {
       humanScore = mapScore(rawScore, 0.0, 0.45, 1, 29.9);
     }
   } else {
-    if (rawScore >= 0.23) {
-      humanScore = mapScore(rawScore, 0.23, 0.28, 85, 99.9);
-    } else if (rawScore >= 0.20) {
-      humanScore = mapScore(rawScore, 0.20, 0.23, 60, 84.9);
-    } else if (rawScore >= 0.16) {
-      humanScore = mapScore(rawScore, 0.16, 0.20, 30, 59.9);
+    if (rawScore >= 0.10) {
+      humanScore = mapScore(rawScore, 0.10, 0.15, 85, 99.9);
+    } else if (rawScore >= 0.065) {
+      humanScore = mapScore(rawScore, 0.065, 0.10, 60, 84.9);
+    } else if (rawScore >= 0.025) {
+      humanScore = mapScore(rawScore, 0.025, 0.065, 30, 59.9);
     } else {
-      humanScore = mapScore(rawScore, 0.0, 0.16, 1, 29.9);
+      humanScore = mapScore(rawScore, 0.0, 0.025, 1, 29.9);
     }
   }
 
@@ -848,6 +878,12 @@ async function performSearch() {
       }
     });
     results.value = res;
+    res.forEach((item: any) => {
+      if (!isVideo(item.path) && getNumericScore(item.score, isImageSearch.value) < 30) {
+        item.collapsedLowScore = true;
+      }
+    });
+    results.value = res;
   } catch (err) { searchMsg.value = `⚠️ Error: ${err}` }
 }
 
@@ -979,7 +1015,7 @@ body { margin: 0; background-color: #0a0a0c; font-family: -apple-system, BlinkMa
 
 /* Result Card Grid */
 .results-grid { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
-.result-card { background: #14141e; padding: 15px; border-radius: 10px; width: 340px; border: 1px solid #222233; display: flex; flex-direction: column; transition: transform 0.2s; }
+.result-card { background: #14141e; padding: 15px; border-radius: 10px; width: 340px; border: 1px solid #222233; display: flex; flex-direction: column; transition: transform 0.2s; padding-bottom: 16px; }
 .result-card:hover { transform: translateY(-3px); border-color: #8333ff; }
 .media-preview { width: 100%; height: 200px; border-radius: 6px; object-fit: cover; background: #000; }
 .card-content { margin-top: 10px; flex-grow: 1; display: flex; flex-direction: column; }
@@ -1331,6 +1367,77 @@ button:disabled {
     margin-left: 0;
     margin-top: 8px;
   }
+}
+
+/* Low Score Collapsible Bar - Refined */
+.low-score-collapsed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, rgba(255,68,68,0.08), rgba(255,68,68,0.04));
+  border: 1px solid rgba(255,68,68,0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #ff6677;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  margin: 6px 0 4px 0;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+}
+.low-score-collapsed-bar:hover {
+  background: linear-gradient(135deg, rgba(255,68,68,0.14), rgba(255,68,68,0.06));
+  border-color: rgba(255,68,68,0.4);
+  box-shadow: inset 0 1px 4px rgba(255,68,68,0.1);
+}
+.collapse-icon {
+  margin-right: 10px;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.collapse-text {
+  flex: 1;
+  margin-right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.expand-arrow {
+  font-size: 14px;
+  opacity: 0.6;
+  transition: transform 0.2s, opacity 0.2s;
+}
+.low-score-collapsed-bar:hover .expand-arrow {
+  transform: translateX(3px);
+  opacity: 1;
+}
+
+/* Collapsible Content - spacing adjustment */
+.collapsible-content {
+  margin-top: 6px;
+}
+
+/* Collapse Footer - right aligned button */
+.collapse-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+/* Collapse Button - link style */
+.btn-collapse-up {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-collapse-up:hover {
+  background: rgba(255,255,255,0.06);
+  color: #bbb;
 }
 
 </style>

@@ -33,14 +33,17 @@ Even rough ideas are welcome. We'll figure out the details together.
 4. Test them manually (automated tests are planned but not yet available)
 5. If you modified `src/proto/search.proto`, regenerate the Python bindings:
 
+> **Prerequisite**: Install the Protocol Buffers compiler (`protoc`) from [https://github.com/protocolbuffers/protobuf/releases](https://github.com/protocolbuffers/protobuf/releases) and ensure it's in your PATH.
+
    ```bash
-   python -m grpc_tools.protoc -I./src/proto --python_out=./src/inference-worker ./src/proto/search.proto
+   protoc -I=./src/proto --python_out=./src/inference-worker ./src/proto/search.proto
    ```
 
    The generated `search_pb2.py` is tracked in the repository, so this step is only needed when the proto schema changes.
 6. Push and open a Pull Request
 
 Don't worry too much about commit message conventions. Just write something clear. If AI tools helped you, feel free to mention it in the PR description — but it's not required.
+If you’d like, consider using [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (e.g., feat:, fix:, docs:). It helps generate changelogs automatically.
 
 ## Code Style
 

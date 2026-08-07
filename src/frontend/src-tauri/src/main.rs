@@ -16,7 +16,7 @@
 
 // =========================================================================
 //  FrameScout — Rust/Tauri Core
-//  Version: 3.0.0
+//  Version: 3.0.1
 //  License: Apache-2.0 (core) / Proprietary (license verification)
 //
 //  This file contains the full Rust backend for FrameScout, including:
@@ -53,7 +53,7 @@ mod license {
     use ed25519_dalek::{Verifier, VerifyingKey, Signature};
     use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
-    pub const DEVELOPER_PUBLIC_KEY_HEX: &str = "REPLACE_WITH_YOUR_PUBLIC_KEY_HEX";
+    pub const DEVELOPER_PUBLIC_KEY_HEX: &str = "4e5707fcc7233e50254479f5defb781a6ba0474c0b087809a234bfba9368316c";
     pub const PRODUCT_TAG: &str = "FRAMESCOUT_PRO_V3";
 
     pub fn verify_license_key(email: &str, license_key: &str) -> Result<(), String> {
@@ -125,6 +125,8 @@ mod license {
 //  Pro users (or builds without `pro` feature) have no limit.
 // =========================================================================
 pub const FREE_TRIAL_LIMIT: usize = 100;
+// 🌟 New：SigLIP 2.0 uses 768-D embeddings for better semantic understanding.
+pub const VECTOR_DIM: usize = 768;
 
 pub struct TrialGuard {
     pub is_pro: bool,
@@ -161,7 +163,7 @@ impl TrialGuard {
 
 // =========================================================================
 //  FlatVectorMatrix — Cache-friendly brute-force vector store
-//  All 512-D embeddings stored contiguously in a single Vec<f32>.
+//  All 768-D embeddings stored contiguously in a single Vec<f32>.
 //  Search is O(N·d) dot product — fast enough for N < 50,000.
 // =========================================================================
 #[derive(Default, Clone)]
@@ -416,8 +418,11 @@ fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
         println!("⚠️ Warning: Failed to create smart_folders table: {}", e);
     }
 
+    // 🌟 Original 768 -D embeddings are now the standard. Old 512-D vectors will be auto-cleaned.
+    let mut memory_matrix = FlatVectorMatrix::new(VECTOR_DIM);
+    let mut stale_paths = Vec::new();
+
     // Load all vectors into memory matrix
-    let mut memory_matrix = FlatVectorMatrix::new(512);
     if let Ok(mut stmt) = conn.prepare(
         "SELECT path, timestamp, vector_json, ocr_text, user_note FROM frame_vectors",
     ) {
@@ -434,16 +439,31 @@ fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
         if let Ok(rows) = rows {
             for row in rows {
                 if let Ok((path, ts, vector, ocr_text, user_note)) = row {
-                    if vector.len() == 512 {
+                    // 🌟 Check if the dimension matches the current VECTOR_DIM (768)
+                    if vector.len() == VECTOR_DIM {
                         memory_matrix.push(path, ts, vector, ocr_text, user_note);
+                    } else {
+                        // Mark obsolete vectors (e.g., old 512-D data), preparing for automatic cleanup
+                        println!("⚠️ Found obsolete vector (dim: {}) for path: {}. Marking for clean.", vector.len(), path);
+                        stale_paths.push(path);
                     }
                 }
             }
         }
     }
+
+    // 🌟 Clean up obsolete dimension data to prevent residual redundant records in the database
+    if !stale_paths.is_empty() {
+        println!("🧹 Cleaning up {} obsolete database records...", stale_paths.len());
+        for path in stale_paths {
+            let _ = conn.execute("DELETE FROM frame_vectors WHERE path = ?1", params![path]);
+        }
+    }
+
     println!(
-        "✅ Memory matrix loaded! Holding {} spatio-temporal slices.",
-        memory_matrix.len()
+        "✅ Memory matrix loaded! Holding {} spatio-temporal slices (Dim: {}).",
+        memory_matrix.len(),
+        VECTOR_DIM
     );
     (conn, memory_matrix)
 }
@@ -784,8 +804,8 @@ async fn search_images(
         let mut score: f32 = *score_map.get(&idx).unwrap_or(&0.0);
         let mut matched_tags = Vec::new();
 
-        if score > 0.05 {
-            matched_tags.push("🧠 Semantic".to_string());
+        if score > 0.001 {
+            matched_tags.push("💡 Semantic".to_string());
         } else {
             score = 0.0;
         }
@@ -793,7 +813,7 @@ async fn search_images(
         if use_ocr && !meta.ocr_text.is_empty() && meta.ocr_text.to_lowercase().contains(&lower_search)
         {
             score += 2.0;
-            matched_tags.push("👁️ OCR".to_string());
+            matched_tags.push("🔍 OCR".to_string());
         }
         if use_note
             && !meta.user_note.is_empty()
@@ -807,7 +827,7 @@ async fn search_images(
             matched_tags.push("📁 Filename".to_string());
         }
 
-        if score > 0.15 || !matched_tags.is_empty() {
+        if score > 0.001 || !matched_tags.is_empty() {
             results.push(SearchResult {
                 path: meta.path.clone(),
                 timestamp: meta.timestamp,
@@ -867,13 +887,13 @@ async fn search_by_image(
     let mut results: Vec<SearchResult> = vector_scores
         .into_iter()
         .filter_map(|(idx, score)| {
-            if score > 0.05 {
+            if score > 0.001 {
                 let meta = &memory.metadata[idx];
                 Some(SearchResult {
                     path: meta.path.clone(),
                     timestamp: meta.timestamp,
                     score,
-                    matched_tags: vec!["👁️ Visual".to_string()],
+                    matched_tags: vec!["🖼️ Visual".to_string()],
                     ocr_text: meta.ocr_text.clone(),
                     user_note: meta.user_note.clone(),
                 })

@@ -32,7 +32,7 @@ FrameScout offers a **third way**: AI-powered search that runs entirely on your 
 
 ---
 
-## 🛠️ Known Limitations (v3.0.0)
+## 🛠️ Known Limitations (v3.0.1)
 
 We believe in transparency. Here's what FrameScout *doesn't* do yet:
 
@@ -51,13 +51,13 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet:
 | Feature | Description |
 | --------- | ------------- |
 | 🔒 **100% Offline** | No internet required. Models are bundled locally. Your data never leaves your computer. |
-| 🧠 **Semantic Search (CLIP)** | Type *"sunset beach with friends"* and find matching images by meaning, not just filenames. |
-| 🔍 **Image-to-Image Search** | Drop a reference image to find visually similar ones in your library. |
-| 👁️ **OCR Text Search** | Extracts and indexes text from images. Search *"receipt from March"* and find it instantly. |
+| 💡 **Semantic Search (ONNX + SigLIP 2)** | Type words and find matching images by meaning, not just filenames. |
+| 🖼️ **Image-to-Image Search** | Drop a reference image to find visually similar ones in your library. |
+| 🔍 **OCR Text Search** | Extracts and indexes text from images. Like searching *"receipt from March"* and find it instantly. |
 | 🎬 **Video Frame Indexing** | Automatically extracts key frames from videos and indexes them alongside static images. |
 | 🧩 **Visual Clustering** | Discover groups of similar images (duplicates, near-duplicates, burst shots) with one click. |
 | 📁 **Smart Folders** | Save any search as a dynamic folder that updates automatically when new files are added. |
-| 📝 **Personal Notes** | Attach markdown notes to any image. Notes are searchable. |
+| 📝 **Personal Notes** | Attach markdown notes to any image. Notes are searchable. Next time you’ll find it more effortlessly. |
 
 ---
 
@@ -67,8 +67,11 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet:
 FrameScout/
 ├── src/
 │   ├── frontend/               # Vue 3 + Tauri desktop app (Rust core)
-│   ├── inference-worker/       # Python AI inference engine
-│   └── proto/                  # ZeroMQ communication schema
+│   ├── inference-worker/       # Python AI inference engine (ONNX + SigLIP 2 + EasyOCR)
+│   │   └── models/
+│   │       ├── siglip2-base/   # SigLIP 2 ONNX models (vision + text)
+│   │       └── easyocr/        # EasyOCR model storage (offline)
+│   ├── proto/                  # ZeroMQ communication schema (Protobuf)
 ├── scripts/                    # Utility scripts (model download, etc.)
 ├── README.md
 ├── CONTRIBUTING.md
@@ -94,7 +97,7 @@ FrameScout uses a **three-process architecture** for maximum performance, safety
 │                   Rust/Tauri Core                       │
 │  ┌──────────┐  ┌──────────────┐  ┌────────────────┐     │
 │  │ File I/O │  │ SQLite +     │  │ FlatVector     │     │
-│  │ WalkDir  │  │ Rusqlite     │  │ Matrix (512D)  │     │
+│  │ WalkDir  │  │ Rusqlite     │  │ Matrix (768D)  │     │
 │  └──────────┘  └──────────────┘  └────────────────┘     │
 └──────────────────────┬──────────────────────────────────┘
                        │  ZeroMQ + Protobuf (REQ/REP)
@@ -102,13 +105,13 @@ FrameScout uses a **three-process architecture** for maximum performance, safety
 ┌─────────────────────────────────────────────────────────┐
 │                Python Inference Worker                  │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │ CLIP ViT-B/32 (Text + Image Embeddings)          │   │
+│  │ ONNX + SigLIP 2  (Text + Image Embeddings, 768D) │   │
 │  └──────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │ EasyOCR (Text Extraction)                        │   │
+│  │ EasyOCR (Text Extraction, offline)               │   │
 │  └──────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │ OpenCV (Video Frame Extraction)                  │   │
+│  │ OpenCV (Video Frame Extraction, 1 FPS)           │   │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -116,20 +119,21 @@ FrameScout uses a **three-process architecture** for maximum performance, safety
 ### Why this architecture?
 
 | Decision | Reason |
-| ---------- | -------- |
+| -------- | ------ |
 | **Rust + Tauri** (not Electron) | Native webview, binary is ~10x smaller, memory footprint is a fraction of Electron |
-| **Python worker** (not all-Rust) | CLIP and EasyOCR have mature Python ecosystems; no need to reinvent the wheel |
+| **Python worker** (not all-Rust) | SigLIP 2 and EasyOCR have mature Python ecosystems; no need to reinvent the wheel |
+| **ONNX Runtime** (not PyTorch) | Universal GPU acceleration (NVIDIA CUDA, AMD DirectML, Intel, CPU fallback); smaller footprint |
 | **ZeroMQ + Protobuf** (not HTTP) | Microsecond latency, type-safe schema, works fully offline |
 | **FlatVector matrix** (not Faiss) | For N < 50,000, O(N·d) brute-force is fast enough (~40ms) and has zero dependencies |
 | **SQLite + WAL mode** | Battle-tested, embedded, supports concurrent reads during writes |
 
 ### Data Flow
 
-**Indexing a folder**: Rust walks the selected directory, collects file paths, and sends them in batches to the Python worker via ZMQ. Python extracts CLIP embeddings and OCR text for each image or video frame, then returns the results. Rust stores everything in SQLite and the in-memory FlatVector matrix, while the frontend shows real-time progress.
+**Indexing a folder**: Rust walks the selected directory, collects file paths, and sends them in batches to the Python worker via ZMQ. Python generates SigLIP 2 image embeddings (768D) and OCR text for each image or video frame, then returns the results. Rust stores everything in SQLite and the in-memory FlatVector matrix, while the frontend shows real-time progress.
 
-**Searching by text**: The frontend sends a query to Rust, which forwards it to Python for CLIP text embedding. Rust then searches the FlatVector matrix using dot-product similarity, combines the results with OCR, note, and filename scores, and returns ranked results to the frontend.
+**Searching by text**: The frontend sends a query to Rust, which forwards it to Python for SigLIP 2 text embedding. Rust then searches the FlatVector matrix using dot-product similarity, combines the results with OCR, note, and filename scores, and returns ranked results to the frontend.
 
-**Searching by image**: The workflow is the same as text search, except Python generates a CLIP image embedding instead of a text embedding from the reference image.
+**Searching by image**: The workflow is the same as text search, except Python generates a SigLIP 2 image embedding instead of a text embedding from the reference image.
 
 ---
 
@@ -150,12 +154,12 @@ Each component can be toggled independently in the UI. Results are scored, ranke
 
 ### FlatVector Matrix Search
 
-All 512-dimensional CLIP embeddings are stored in a single `Vec<f32>` for cache-friendly sequential access:
+All 768‑dimensional SigLIP 2 embeddings are stored in a single `Vec<f32>` for cache-friendly sequential access:
 
 ```rust
 pub struct FlatVectorMatrix {
-    pub dim: usize,            // 512
-    pub flat_vectors: Vec<f32>, // [v0_0..v0_511, v1_0..v1_511, ...]
+    pub dim: usize,            // 768
+    pub flat_vectors: Vec<f32>, // [v0_0..v0_767, v1_0..v1_767, ...]
     pub metadata: Vec<ImageMeta>,
 }
 ```
@@ -166,7 +170,7 @@ Search is a simple dot-product loop over contiguous memory — **no malloc, no i
 
 ## 📊 Performance
 
-Tested on a desktop with AMD Ryzen 7 5800X + 32GB RAM + NVIDIA RTX 3070.
+Tested on a desktop with AMD Ryzen 7 5800X + 32GB RAM + NVIDIA RTX 3070 (ONNX with CUDA).
 
 | Collection Size | Text Query Latency | Image Query Latency | Index Throughput |
 | --------------- | ------------------ | ------------------- | -----------------|
@@ -174,7 +178,7 @@ Tested on a desktop with AMD Ryzen 7 5800X + 32GB RAM + NVIDIA RTX 3070.
 | 10,000 images   | 7.2 ms             | 9.5 ms              | ~800 img/min     |
 | 50,000 images   | 38.0 ms            | 45.0 ms             | ~600 img/min     |
 
-> **Disclaimer**: These are benchmark results from our development environment (AMD Ryzen 7 5800X, 32GB RAM, RTX 3070). Actual performance depends on your hardware and dataset characteristics. Reproduce on your machine using the provided benchmark script (coming soon).
+> **Disclaimer**: These are benchmark results from our development environment. Actual performance depends on your hardware and dataset characteristics. Reproduce on your machine using the provided benchmark script (coming soon).
 
 ---
 
@@ -185,7 +189,7 @@ Tested on a desktop with AMD Ryzen 7 5800X + 32GB RAM + NVIDIA RTX 3070.
 - Rust 1.75+ (2021 edition)
 - Python 3.10+
 - Node.js 18+ & npm
-- CLIP model files (see below)
+- SigLIP 2 ONNX model files (see below)
 
 ### Build & Run
 
@@ -205,23 +209,44 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 # > ⚠️ This step requires internet access. After completion, FrameScout works fully offline.
-# 3. Download CLIP model (one-time, ~600MB)
-# Option A: Use the provided script
-python ../scripts/download_models.py
-# Option B: Manually download from Hugging Face and place in:
-#   src/inference-worker/models/openai-clip/
+# 3. Download SigLIP 2 + EasyOCR models (one-time, ~1.5GB total) (from src/inference-worker)
+python ../../scripts/download_models.py
 
 # 4. Build and run (Community Edition)
+# Return to frontend directory for building
 cd ../frontend
 npm run tauri dev          # Development mode
 # npm run tauri build      # Production build
-
 ```
+
+### Packaging the Inference Worker
+
+The Python inference worker must be compiled into a standalone executable for Tauri to launch it.
+
+```bash
+# From the repository root
+cd src/inference-worker
+# Activate your virtual environment first
+pyinstaller --noconfirm --onedir --console --name "ai_worker" \
+    --hidden-import "transformers" \
+    --hidden-import "easyocr" \
+    main.py
+```
+
+After successful build, copy the output to the Tauri binary folder:
+
+```bash
+cp -r dist/ai_worker ../frontend/src-tauri/bin/
+```
+
+Now `npm run tauri dev` will automatically start the compiled worker.
+
+> **Note:** The packaged worker looks for models in `./models/` relative to its own location. After copying to `src/frontend/src-tauri/bin/`, ensure the `models` folder exists there, or adjust the path in `main.py`.
 
 ### First Launch
 
 1. The splash screen appears: *"FRAME SCOUT NEURAL LINK ESTABLISHING..."*
-2. CLIP + EasyOCR models load into memory (varies depending on hardware)
+2. SigLIP 2 + EasyOCR models load into memory (varies depending on hardware)
 3. You'll see the main interface with the search console
 4. Click **Browse** → select a folder containing images
 5. Click **Start Indexing** → watch the real-time extraction bus
@@ -236,6 +261,7 @@ npm run tauri dev          # Development mode
 - [x] Core search (text + image + OCR + notes)
 - [x] Visual clustering
 - [x] Smart folders
+- [x] SigLIP 2 migration (768D embeddings, ONNX Runtime)
 - [ ] RwLock optimization (fix search-during-scan blocking)
 - [ ] Hover tooltips with file metadata
 - [ ] Per-image delete (not just bulk ghost purge)
@@ -244,8 +270,8 @@ npm run tauri dev          # Development mode
 
 ### v3.1 (Cross-Platform & UX)
 
-- [ ] SigLIP migration (improved multilingual understanding)
 - [ ] Folder tree sidebar view
+- [ ] Enhance smart folders and other user experiences
 - [ ] Multiple view modes (grid / list / timeline)
 - [ ] Export/Import database (SQLite backup)
 - [ ] Data timeline (visualize your indexing history)
@@ -254,7 +280,6 @@ npm run tauri dev          # Development mode
 
 - [ ] Faiss integration for N > 50K
 - [ ] Scene-detection for video keyframes
-- [ ] GPU acceleration via ONNX Runtime
 - [ ] Batch operations (multi-select delete/export)
 - [ ] Multi-modal fusion search (text + image simultaneously)
 - [ ] macOS build (Apple Silicon native)
@@ -295,8 +320,9 @@ All other trademarks are the property of their respective owners.
 
 ## 🙏 Acknowledgments
 
-- **OpenAI CLIP** — for the open-source contrastive language-image pre-training model
+- **Google SigLIP 2** — for the open-source contrastive language-image pre-training model (used via ONNX)
 - **EasyOCR** — for the lightweight, multi-language OCR engine
+- **ONNX Runtime** — for cross-platform, hardware-accelerated inference
 - **Tauri** — for the secure, lightweight desktop app framework
 - **ZeroMQ** — for reliable, high-performance inter-process communication
 - **Prost** — for idiomatic Protobuf support in Rust

@@ -4,13 +4,13 @@ FrameScout is developed with the help of AI-assisted coding tools. This document
 
 ## Human Responsibility
 
-**I (bobgsning) take full responsibility for all code in this repository.**
+**Humans should take full responsibility for all code in this repository.**
 
-Every line of code — whether written by hand or generated with AI assistance — has been reviewed, tested, and understood by me. I can explain, modify, and debug any part of the codebase without AI help.
+Every line of code — whether written by hand or generated with AI assistance — should be reviewed, tested, and understood by humans. Humans can explain, modify, and debug any part of the codebase.
 
 ## How AI Is Used
 
-AI tools (Claude, ChatGPT, GitHub Copilot) assist with:
+AI tools (Like Claude, ChatGPT, GitHub Copilot and so on) assist with:
 
 - Generating implementation code based on human-designed architecture
 - Debugging and troubleshooting

@@ -2,17 +2,23 @@
 # Install with: pip install -r requirements.txt
 
 # Core ML
-torch>=2.0.0
-transformers>=4.30.0
-Pillow>=9.0.0
-numpy>=1.24.0
+# ONNX Runtime (choose one: cpu/gpu or directml)
+onnxruntime>=1.17.0
+# onnxruntime-directml>=1.17.0   # Uncomment for Windows DirectML acceleration
+
+transformers>=4.37.0
+Pillow>=10.0.0
+numpy>=1.26.0
 
 # OCR
 easyocr>=1.7.0
 
-# Computer Vision (headless — no GUI dependencies)
+# Computer Vision (headless)
 opencv-python-headless>=4.8.0
 
 # IPC
 pyzmq>=25.0.0
-protobuf>=4.21.0
+protobuf>=4.25.0
+
+# Optional: PyTorch (only needed if you plan to run original CLIP or debug)
+# torch>=2.0.0
