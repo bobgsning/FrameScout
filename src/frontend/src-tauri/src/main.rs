@@ -990,6 +990,70 @@ async fn delete_smart_folder(state: tauri::State<'_, AppState>, id: i64) -> Resu
     Ok(())
 }
 
+fn wait_for_engine_and_notify(app_handle: tauri::AppHandle) {
+    let context = zmq::Context::new();
+    let mut retries = 0;
+    const MAX_RETRIES: u32 = 50;
+
+    loop {
+        // REQ socket must receive a reply before sending again
+        let check_socket = context.socket(zmq::REQ).unwrap();
+        check_socket.connect("tcp://127.0.0.1:5555").unwrap();
+        check_socket.set_rcvtimeo(3000).unwrap();
+
+        let ping_req = proto::EncodeRequest {
+            task_id: "PING_INIT".to_string(),
+            payload: Some(proto::encode_request::Payload::Text("PING_ENGINE".to_string())),
+        };
+        let mut buf = Vec::new();
+        ping_req.encode(&mut buf).unwrap();
+
+        let success = match check_socket.send(buf, 0) {
+            Ok(()) => match check_socket.recv_bytes(0) {
+                Ok(reply) => {
+                    if let Ok(resp) = proto::EncodeResponse::decode(&reply[..]) {
+                        resp.result.is_some()
+                    } else {
+                        false
+                    }
+                }
+                Err(_) => false,
+            },
+            Err(_) => false,
+        };
+
+        drop(check_socket);
+
+        if success {
+            let _ = app_handle.emit("engine-status", serde_json::json!({
+                "status": "ready",
+                "message": "AI Worker is ready!"
+            }));
+            println!("✅ AI Worker is ready!");
+            break;
+        }
+
+        retries += 1;
+        let _ = app_handle.emit("engine-status", serde_json::json!({
+            "status": "connecting",
+            "retry": retries,
+            "max_retries": MAX_RETRIES,
+            "message": format!("Connecting... attempt {}/{}", retries, MAX_RETRIES)
+        }));
+
+        if retries >= MAX_RETRIES {
+            let _ = app_handle.emit("engine-status", serde_json::json!({
+                "status": "error",
+                "message": "AI Worker failed to become ready. Please check models and restart."
+            }));
+            panic!("AI Worker failed to become ready within {} seconds.", MAX_RETRIES * 3);
+        }
+
+        println!("⏳ Retrying in 3 seconds... (attempt {}/{})", retries, MAX_RETRIES);
+        std::thread::sleep(std::time::Duration::from_secs(3));
+    }
+}
+
 // =========================================================================
 //  Main Entry Point
 // =========================================================================
@@ -1051,65 +1115,11 @@ fn main() {
     // Initialize database and load memory matrix
     let (db_conn, memory_db) = init_db_and_load_memory();
 
-    // Wait for AI Worker to be ready
-    println!("⏳ Waiting for AI Worker to be ready...");
-    let context_check = zmq::Context::new();
-
-    let mut retries = 0;
-    const MAX_RETRIES: u32 = 50; // 50 * 3 seconds = 150 seconds max wait
-
-    loop {
-        // Each iteration creates a new temporary socket to avoid REQ state machine issues (REQ socket must send before recv)
-        let check_socket = context_check.socket(zmq::REQ).unwrap();
-        check_socket.connect("tcp://127.0.0.1:5555").unwrap();
-        check_socket.set_rcvtimeo(3000).unwrap();
-
-        let ping_req = proto::EncodeRequest {
-            task_id: "PING_INIT".to_string(),
-            payload: Some(proto::encode_request::Payload::Text("PING_ENGINE".to_string())),
-        };
-        let mut buf = Vec::new();
-        ping_req.encode(&mut buf).unwrap();
-
-        let success = match check_socket.send(buf, 0) {
-            Ok(()) => match check_socket.recv_bytes(0) {
-                Ok(reply) => {
-                    if let Ok(resp) = proto::EncodeResponse::decode(&reply[..]) {
-                        resp.result.is_some()
-                    } else {
-                        false
-                    }
-                }
-                Err(_) => false,
-            },
-            Err(_) => false,
-        };
-
-        drop(check_socket);// Immediately destroy to release the port.
-
-        if success {
-            println!("✅ AI Worker is ready!");
-            break;
-        }
-
-        retries += 1;
-        if retries >= MAX_RETRIES {
-            panic!(
-                "AI Worker failed to become ready within {} seconds. \
-                 Check that models are correctly placed.",
-                MAX_RETRIES * 3
-            );
-        }
-        println!("⏳ Retrying in 3 seconds... (attempt {}/{})", retries, MAX_RETRIES);
-        std::thread::sleep(std::time::Duration::from_secs(3));
-    }
-
     // Create ZMQ socket for Python communication
     let context = zmq::Context::new();
     let socket = context.socket(zmq::REQ).unwrap();
     socket.connect("tcp://127.0.0.1:5555").unwrap();
 
-    // Build and run the Tauri application
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
@@ -1117,6 +1127,14 @@ fn main() {
             db_conn: Mutex::new(db_conn),
             memory_db: Mutex::new(memory_db),
             trial_guard: Mutex::new(TrialGuard::new()),
+        })
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            // Start background thread to wait for engine readiness.
+            std::thread::spawn(move || {
+                wait_for_engine_and_notify(app_handle);
+            });
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             scan_folder,

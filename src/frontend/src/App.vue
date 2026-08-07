@@ -132,6 +132,12 @@
     <div class="loader-ring"></div>
     <h2 class="splash-title">FRAME SCOUT NEURAL LINK ESTABLISHING...</h2>
     <p class="splash-subtitle">Loading large CLIP & EasyOCR models into high-dimensional memory, please wait...</p>
+    <p class="splash-subtitle">{{ engineMessage }}</p>
+    <p v-if="engineStatus === 'connecting'" class="splash-retry">
+      Attempt {{ engineRetry }} / {{ engineMaxRetries }}
+    </p>
+    <p v-if="engineStatus === 'error'" class="splash-error">{{ engineMessage }}</p>
+    <!-- <button v-if="engineStatus === 'error'" @click="restartEngine" class="btn btn-primary">Restart Engine</button> -->
   </div>
 
   <div v-else class="app-container">
@@ -427,6 +433,10 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 
+// Variable to store the unlisten function, declared at the top of <script setup>
+let unlistenEngineStatus: (() => void) | null = null;
+let unlistenScanProgress: (() => void) | null = null;
+
 // Define interfaces here
 interface SearchResult {
   path: string
@@ -456,6 +466,11 @@ interface SmartFolder {
 }
 
 const engineReady = ref(false)
+const engineStatus = ref('connecting'); // 'connecting' | 'ready' | 'error'
+const engineRetry = ref(0);
+const engineMaxRetries = ref(50);
+const engineMessage = ref('Connecting to AI engine...');
+
 const folderPath = ref('')
 const scanMode = ref('all')
 const searchQuery = ref('')
@@ -506,8 +521,7 @@ const licenseKeyInput = ref('')
 const activateMsg = ref('')
 const activateSuccess = ref(false)
 
-// Variable to store the unlisten function, declared at the top of <script setup>
-let unlistenScanProgress: (() => void) | null = null;
+
 
 // Ensure handleKeydown is defined at the top level of <script setup> so both onMounted and onUnmounted can access it.
 function handleKeydown(e: KeyboardEvent) {
@@ -658,6 +672,8 @@ function highlight(text: string) {
   return safeText.replace(regex, '<span class="highlight-text">$1</span>');
 }
 
+
+
 onMounted(async () => {
   // ---- 1. Restore basic state ----
   folderPath.value = localStorage.getItem('framescout_folder_path') || ''
@@ -668,59 +684,79 @@ onMounted(async () => {
   // ---- 3. Check license status ----
   await checkLicense()
 
-  // ---- 4. Connect to engine ----
-  try {
-    await invoke('ping_engine')
-    engineReady.value = true
-
-    // ---- 5. Load smart folders ----
-    await loadSmartFolders()
-
-    // ---- 6. Listen for scan progress (store unlisten function) ----
-    const unlisten = await listen('scan-progress', (e: any) => {
-      currentStatus.value = e.payload.status
-      currentFile.value = e.payload.file_path
-      scanProgress.value = { current: e.payload.current, total: e.payload.total }
-
-      if (e.payload.new_files && e.payload.new_files.length > 0) {
-        const newItems = e.payload.new_files.map((newPath: string) => ({
-          path: newPath,
-          timestamp: 0.0,
-          score: 2.0,
-          matched_tags: ['✨ Fresh Index'],
-          ocr_text: '',
-          user_note: '',
-          isMissing: false,
-          expandOcr: false
-        }))
-
-        if (searchQuery.value || isImageSearch.value || isClusteringView.value) {
-          newItems.forEach((item: typeof newItems[number]) => {
-            if (!incomingFiles.value.some(f => f.path === item.path)) {
-              incomingFiles.value.push(item)
-            }
-          })
-          showIncomingBanner.value = true
-        } else {
-          newItems.forEach((item: typeof newItems[number]) => {
-            if (!results.value.some(r => r.path === item.path)) {
-              results.value.unshift(item)
-              totalResults.value += 1
-              fullResultsCache.value.unshift(item)
-            }
-          })
-        }
+  // ---- 4. Listen for engine status (replaces direct ping) ----
+  const unlistenEngine = await listen<{ status: string; retry?: number; max_retries?: number; message: string }>(
+    'engine-status',
+    (event) => {
+      const payload = event.payload;
+      switch (payload.status) {
+        case 'ready':
+          engineReady.value = true;
+          engineStatus.value = 'ready';
+          engineMessage.value = '';
+          // 引擎就绪后加载 smart folders
+          loadSmartFolders();
+          break;
+        case 'connecting':
+          engineStatus.value = 'connecting';
+          engineRetry.value = payload.retry ?? 0;
+          engineMaxRetries.value = payload.max_retries ?? 50;
+          engineMessage.value = payload.message;
+          break;
+        case 'error':
+          engineStatus.value = 'error';
+          engineMessage.value = payload.message;
+          break;
       }
-    })
-    unlistenScanProgress = unlisten // Save for cleanup on unmount
-  } catch (e) {
-    console.error("Engine ping failed", e)
-  }
+    }
+  );
+  unlistenEngineStatus = unlistenEngine; // onUnmounted
+
+  // ---- 5. Listen for scan progress ----
+  const unlistenScan = await listen('scan-progress', (e: any) => {
+    currentStatus.value = e.payload.status
+    currentFile.value = e.payload.file_path
+    scanProgress.value = { current: e.payload.current, total: e.payload.total }
+
+    if (e.payload.new_files && e.payload.new_files.length > 0) {
+      const newItems = e.payload.new_files.map((newPath: string) => ({
+        path: newPath,
+        timestamp: 0.0,
+        score: 2.0,
+        matched_tags: ['✨ Fresh Index'],
+        ocr_text: '',
+        user_note: '',
+        isMissing: false,
+        expandOcr: false
+      }))
+
+      if (searchQuery.value || isImageSearch.value || isClusteringView.value) {
+        newItems.forEach((item: typeof newItems[number]) => {
+          if (!incomingFiles.value.some(f => f.path === item.path)) {
+            incomingFiles.value.push(item)
+          }
+        })
+        showIncomingBanner.value = true
+      } else {
+        newItems.forEach((item: typeof newItems[number]) => {
+          if (!results.value.some(r => r.path === item.path)) {
+            results.value.unshift(item)
+            totalResults.value += 1
+            fullResultsCache.value.unshift(item)
+          }
+        })
+      }
+    }
+  })
+  unlistenScanProgress = unlistenScan
 })
 
 onUnmounted(() => {
-  // ---- Clean up keyboard listener ----
-  document.removeEventListener('keydown', handleKeydown)
+  // ---- Clean up engine status listener ----
+  if (unlistenEngineStatus) {
+    unlistenEngineStatus()
+    unlistenEngineStatus = null
+  }
 
   // ---- Clean up scan progress listener ----
   if (unlistenScanProgress) {
@@ -728,12 +764,17 @@ onUnmounted(() => {
     unlistenScanProgress = null
   }
 
+  // ---- Clean up keyboard listener ----
+  document.removeEventListener('keydown', handleKeydown)
+
   // ---- Clean up video timers ----
   for (const [, timerId] of videoTimers) {
     clearTimeout(timerId)
   }
   videoTimers.clear()
 })
+
+
 
 function savePath() { localStorage.setItem('framescout_folder_path', folderPath.value) }
 
