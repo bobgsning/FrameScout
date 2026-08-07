@@ -991,57 +991,6 @@ async fn delete_smart_folder(state: tauri::State<'_, AppState>, id: i64) -> Resu
 }
 
 // =========================================================================
-//  Pro Commands (only available with `pro` feature)
-// =========================================================================
-#[cfg(feature = "pro")]
-#[tauri::command]
-async fn activate_pro_license(
-    state: tauri::State<'_, AppState>,
-    email: String,
-    license_key: String,
-) -> Result<String, String> {
-    Err("Pro license activation is not available in the open source edition. Please download the Pro version from polar.sh in the future.".to_string())
-}
-
-#[cfg(feature = "pro")]
-#[tauri::command]
-async fn get_license_status(
-    state: tauri::State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    let guard = state.trial_guard.lock().unwrap();
-    Ok(serde_json::json!({
-        "is_pro": guard.is_pro,
-        "email": guard.user_email,
-        "limit": FREE_TRIAL_LIMIT,
-    }))
-}
-
-// =========================================================================
-//  Stub commands when `pro` feature is disabled (development mode)
-// =========================================================================
-#[cfg(not(feature = "pro"))]
-#[tauri::command]
-async fn activate_pro_license(
-    _state: tauri::State<'_, AppState>,
-    _email: String,
-    _license_key: String,
-) -> Result<String, String> {
-    Err("Pro activation is not available in the open source edition.".to_string())
-}
-
-#[cfg(not(feature = "pro"))]
-#[tauri::command]
-async fn get_license_status(
-    _state: tauri::State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
-        "is_pro": false,
-        "email": "",
-        "limit": FREE_TRIAL_LIMIT,
-    }))
-}
-
-// =========================================================================
 //  Main Entry Point
 // =========================================================================
 mod proto {
@@ -1101,6 +1050,59 @@ fn main() {
 
     // Initialize database and load memory matrix
     let (db_conn, memory_db) = init_db_and_load_memory();
+
+    // Wait for AI Worker to be ready
+    println!("⏳ Waiting for AI Worker to be ready...");
+    let context_check = zmq::Context::new();
+
+    let mut retries = 0;
+    const MAX_RETRIES: u32 = 50; // 50 * 3 seconds = 150 seconds max wait
+
+    loop {
+        // Each iteration creates a new temporary socket to avoid REQ state machine issues (REQ socket must send before recv)
+        let check_socket = context_check.socket(zmq::REQ).unwrap();
+        check_socket.connect("tcp://127.0.0.1:5555").unwrap();
+        check_socket.set_rcvtimeo(3000).unwrap();
+
+        let ping_req = proto::EncodeRequest {
+            task_id: "PING_INIT".to_string(),
+            payload: Some(proto::encode_request::Payload::Text("PING_ENGINE".to_string())),
+        };
+        let mut buf = Vec::new();
+        ping_req.encode(&mut buf).unwrap();
+
+        let success = match check_socket.send(buf, 0) {
+            Ok(()) => match check_socket.recv_bytes(0) {
+                Ok(reply) => {
+                    if let Ok(resp) = proto::EncodeResponse::decode(&reply[..]) {
+                        resp.result.is_some()
+                    } else {
+                        false
+                    }
+                }
+                Err(_) => false,
+            },
+            Err(_) => false,
+        };
+
+        drop(check_socket);// Immediately destroy to release the port.
+
+        if success {
+            println!("✅ AI Worker is ready!");
+            break;
+        }
+
+        retries += 1;
+        if retries >= MAX_RETRIES {
+            panic!(
+                "AI Worker failed to become ready within {} seconds. \
+                 Check that models are correctly placed.",
+                MAX_RETRIES * 3
+            );
+        }
+        println!("⏳ Retrying in 3 seconds... (attempt {}/{})", retries, MAX_RETRIES);
+        std::thread::sleep(std::time::Duration::from_secs(3));
+    }
 
     // Create ZMQ socket for Python communication
     let context = zmq::Context::new();
