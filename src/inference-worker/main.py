@@ -45,12 +45,12 @@ def create_onnx_session(onnx_path):
     available_providers = ort.get_available_providers()
     providers = []
 
-    if "DmlExecutionProvider" in available_providers:
-        providers.append("DmlExecutionProvider")
-        print("🔥 [Compute Core] DirectML GPU acceleration enabled! (Supports AMD/NVIDIA/Intel)")
-    elif "CUDAExecutionProvider" in available_providers:
+    if "CUDAExecutionProvider" in available_providers:
         providers.append("CUDAExecutionProvider")
-        print("🔥 [Compute Core] NVIDIA CUDA acceleration enabled!")
+        print("🔥 NVIDIA CUDA acceleration enabled!")
+    elif "DmlExecutionProvider" in available_providers:
+        providers.append("DmlExecutionProvider")
+        print("🔥 DirectML GPU acceleration enabled! (AMD/Intel)")
     
     providers.append("CPUExecutionProvider")
 
