@@ -16,7 +16,7 @@
 
 // =========================================================================
 //  FrameScout — Rust/Tauri Core
-//  Version: 3.0.1
+//  Version: 3.0.2
 //  License: Apache-2.0 (core) / Proprietary (license verification)
 //
 //  This file contains the full Rust backend for FrameScout, including:
@@ -29,6 +29,7 @@
 
 use prost::Message;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use walkdir::WalkDir;
 use rusqlite::{params, Connection};
 
@@ -172,6 +173,7 @@ pub struct ImageMeta {
     pub timestamp: f32,
     pub ocr_text: String,
     pub user_note: String,
+    pub index_time: f64,   // 🌟 New
 }
 
 #[derive(Default)]
@@ -198,7 +200,7 @@ impl FlatVectorMatrix {
         self.metadata.is_empty()
     }
 
-    pub fn push(&mut self, path: String, timestamp: f32, vector: Vec<f32>, ocr_text: String, user_note: String) {
+    pub fn push(&mut self, path: String, timestamp: f32, vector: Vec<f32>, ocr_text: String, user_note: String, index_time: f64) {
         if vector.len() != self.dim {
             println!("⚠️ Dimension mismatch: expected {}, got {}", self.dim, vector.len());
             return;
@@ -209,6 +211,7 @@ impl FlatVectorMatrix {
             timestamp,
             ocr_text,
             user_note,
+            index_time,   // 🌟 New
         });
     }
 
@@ -270,9 +273,8 @@ pub struct ClusterGroup {
 //  concurrent read access during scanning.
 // =========================================================================
 struct AppState {
-    zmq_socket: Mutex<zmq::Socket>,
     db_conn: Mutex<Connection>,
-    memory_db: Mutex<FlatVectorMatrix>,
+    memory_db: RwLock<FlatVectorMatrix>,
     trial_guard: Mutex<TrialGuard>,
 }
 
@@ -310,6 +312,7 @@ struct SearchResult {
     matched_tags: Vec<String>,
     ocr_text: String,
     user_note: String,
+    index_time: f64,  // 🌟 New
 }
 
 #[derive(serde::Serialize)]
@@ -324,48 +327,31 @@ struct PagedResponse {
 //  Includes automatic reconnection on failure.
 // =========================================================================
 fn request_vector(
-    state: &tauri::State<AppState>,
+    _state: &tauri::State<AppState>,
     payload: proto::encode_request::Payload,
     timeout_ms: i32,
-) -> Result<Vec<(String, f32, Vec<f32>, String)>, String> {
+) -> Result<Vec<(String, f32, Vec<f32>, String, f64)>, String> {
+    let context = zmq::Context::new();
+    let socket = context.socket(zmq::REQ).map_err(|e| e.to_string())?;
+    socket.set_rcvtimeo(timeout_ms).map_err(|e| e.to_string())?;
+    socket.connect("tcp://127.0.0.1:5555").map_err(|e| e.to_string())?;
+
     let req = proto::EncodeRequest {
         task_id: "TASK_GLOBAL".to_string(),
         payload: Some(payload),
     };
     let mut buf = Vec::new();
     req.encode(&mut buf).unwrap();
-    let mut socket = state.zmq_socket.lock().unwrap();
 
-    socket.set_rcvtimeo(timeout_ms).unwrap();
-    if let Err(e) = socket.send(buf, 0) {
-        // Reconnect on send failure
-        let context = zmq::Context::new();
-        *socket = context.socket(zmq::REQ).unwrap();
-        socket.connect("tcp://127.0.0.1:5555").unwrap();
-        return Err(format!("Socket reset due to send failure: {}", e));
-    }
-
-    let reply_raw = match socket.recv_bytes(0) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            // Reconnect on receive failure
-            let context = zmq::Context::new();
-            *socket = context.socket(zmq::REQ).unwrap();
-            socket.connect("tcp://127.0.0.1:5555").unwrap();
-            if e == zmq::Error::EAGAIN {
-                return Err("Engine timeout. Socket reset.".to_string());
-            } else {
-                return Err(e.to_string());
-            }
-        }
-    };
+    socket.send(buf, 0).map_err(|e| e.to_string())?;
+    let reply_raw = socket.recv_bytes(0).map_err(|e| e.to_string())?;
 
     let res = proto::EncodeResponse::decode(&reply_raw[..]).map_err(|e| e.to_string())?;
     match res.result {
         Some(proto::encode_response::Result::Success(s)) => Ok(s
             .frames
             .into_iter()
-            .map(|f| (f.file_path, f.timestamp, f.vector, f.ocr_text))
+            .map(|f| (f.file_path, f.timestamp, f.vector, f.ocr_text, f.index_time))
             .collect()),
         Some(proto::encode_response::Result::Error(e)) => Err(e.message),
         None => Err("Unknown response".to_string()),
@@ -395,7 +381,8 @@ fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
             timestamp REAL NOT NULL,
             vector_json TEXT NOT NULL,
             ocr_text TEXT DEFAULT '',
-            user_note TEXT DEFAULT ''
+            user_note TEXT DEFAULT '',
+            index_time REAL DEFAULT 0.0   -- 🌟 New column
         )",
         [],
     ) {
@@ -424,7 +411,8 @@ fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
 
     // Load all vectors into memory matrix
     if let Ok(mut stmt) = conn.prepare(
-        "SELECT path, timestamp, vector_json, ocr_text, user_note FROM frame_vectors",
+        "SELECT path, timestamp, vector_json, ocr_text, user_note, index_time FROM frame_vectors
+         ORDER BY index_time DESC",
     ) {
         let rows = stmt.query_map([], |row| {
             let path: String = row.get(0)?;
@@ -432,16 +420,17 @@ fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
             let json_str: String = row.get(2)?;
             let ocr_text: String = row.get(3)?;
             let user_note: String = row.get(4).unwrap_or_default();
+            let index_time: f64 = row.get(5)?;
             let vector: Vec<f32> = serde_json::from_str(&json_str).unwrap_or_default();
-            Ok((path, ts as f32, vector, ocr_text, user_note))
+            Ok((path, ts as f32, vector, ocr_text, user_note, index_time))
         });
 
         if let Ok(rows) = rows {
             for row in rows {
-                if let Ok((path, ts, vector, ocr_text, user_note)) = row {
+                if let Ok((path, ts, vector, ocr_text, user_note, index_time)) = row {
                     // 🌟 Check if the dimension matches the current VECTOR_DIM (768)
                     if vector.len() == VECTOR_DIM {
-                        memory_matrix.push(path, ts, vector, ocr_text, user_note);
+                        memory_matrix.push(path, ts, vector, ocr_text, user_note, index_time);
                     } else {
                         // Mark obsolete vectors (e.g., old 512-D data), preparing for automatic cleanup
                         println!("⚠️ Found obsolete vector (dim: {}) for path: {}. Marking for clean.", vector.len(), path);
@@ -474,9 +463,9 @@ fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
 
 /// Ping the Python inference engine to check if it's alive
 #[tauri::command]
-async fn ping_engine(state: tauri::State<'_, AppState>) -> Result<String, String> {
+async fn ping_engine(_state: tauri::State<'_, AppState>) -> Result<String, String> {
     match request_vector(
-        &state,
+        &_state,
         proto::encode_request::Payload::Text("PING_ENGINE".to_string()),
         90000,
     ) {
@@ -495,7 +484,7 @@ async fn scan_folder(
 ) -> Result<usize, String> {
     // Check trial limit
     {
-        let memory = state.memory_db.lock().unwrap();
+        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
         state.trial_guard.lock().unwrap().check_limit(memory.len())?;
     }
 
@@ -530,7 +519,7 @@ async fn scan_folder(
 
             if should_process {
                 let path_str = path.to_string_lossy().to_string();
-                let exists = { state.memory_db.lock().unwrap().contains_path(&path_str) };
+                let exists = { state.memory_db.read().map_err(|e| e.to_string())?.contains_path(&path_str) };
                 if !exists {
                     pending_files.push(path_str);
                 }
@@ -562,7 +551,7 @@ async fn scan_folder(
     for chunk in pending_files.chunks(batch_size) {
         // Re-check limit before each batch
         {
-            let memory = state.memory_db.lock().unwrap();
+            let memory = state.memory_db.read().map_err(|e| e.to_string())?;
             if let Err(err_msg) = state.trial_guard.lock().unwrap().check_limit(memory.len()) {
                 let _ = app.emit(
                     "scan-progress",
@@ -588,20 +577,20 @@ async fn scan_folder(
             Ok(frames) => {
                 consecutive_failures = 0;
                 let mut db = state.db_conn.lock().unwrap();
-                let mut memory = state.memory_db.lock().unwrap();
+                let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
 
                 let tx_result = db.transaction();
                 let mut batch_added_files = Vec::new();
 
                 if let Ok(tx) = tx_result {
-                    for (file_path, timestamp, vec, ocr_text) in frames {
+                    for (file_path, timestamp, vec, ocr_text, index_time) in frames {
                         let vec_json =
                             serde_json::to_string(&vec).unwrap_or_else(|_| "[]".to_string());
                         if tx.execute(
-                            "INSERT INTO frame_vectors (path, timestamp, vector_json, ocr_text, user_note) VALUES (?1, ?2, ?3, ?4, '')",
-                            params![file_path.clone(), timestamp, vec_json, ocr_text.clone()],
+                            "INSERT INTO frame_vectors (path, timestamp, vector_json, ocr_text, user_note, index_time) VALUES (?1, ?2, ?3, ?4, '', ?5)",
+                            params![file_path.clone(), timestamp, vec_json, ocr_text.clone(), index_time],
                         ).is_ok() {
-                            memory.push(file_path.clone(), timestamp, vec, ocr_text, "".to_string());
+                            memory.push(file_path.clone(), timestamp, vec, ocr_text, "".to_string(), index_time);
                             batch_added_files.push(file_path);
                             added_count += 1;
                         }
@@ -676,7 +665,7 @@ async fn cluster_similar_images(
     state: tauri::State<'_, AppState>,
     threshold: f32,
 ) -> Result<Vec<ClusterGroup>, String> {
-    let memory = state.memory_db.lock().unwrap();
+    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
     if memory.is_empty() {
         return Ok(Vec::new());
     }
@@ -734,7 +723,7 @@ async fn update_note(
     )
     .map_err(|e| e.to_string())?;
 
-    let mut memory = state.memory_db.lock().unwrap();
+    let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
     for meta in memory.metadata.iter_mut() {
         if meta.path == path {
             meta.user_note = note.clone();
@@ -747,7 +736,7 @@ async fn update_note(
 #[tauri::command]
 async fn clean_ghosts(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     let db = state.db_conn.lock().unwrap();
-    let mut memory = state.memory_db.lock().unwrap();
+    let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
     let mut to_remove = Vec::new();
 
     for meta in &memory.metadata {
@@ -776,6 +765,13 @@ async fn search_images(
     use_note: bool,
     use_filename: bool,
 ) -> Result<PagedResponse, String> {
+    {
+        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        if memory.is_empty() {
+            return Err("Memory Matrix is empty! Please scan a folder first.".to_string());
+        }
+    }
+
     let mut text_vec = Vec::new();
     if use_vector {
         let text_frames =
@@ -785,7 +781,7 @@ async fn search_images(
         }
     }
 
-    let memory = state.memory_db.lock().unwrap();
+    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
     if memory.is_empty() {
         return Err("Memory Matrix is empty!".to_string());
     }
@@ -835,6 +831,7 @@ async fn search_images(
                 matched_tags,
                 ocr_text: meta.ocr_text.clone(),
                 user_note: meta.user_note.clone(),
+                index_time: meta.index_time,
             });
         }
     }
@@ -870,6 +867,13 @@ async fn search_by_image(
     page: usize,
     limit: usize,
 ) -> Result<PagedResponse, String> {
+    {
+        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        if memory.is_empty() {
+            return Err("Memory Matrix is empty! Please scan a folder first.".to_string());
+        }
+    }
+
     let img_frames =
         request_vector(&state, proto::encode_request::Payload::FilePath(image_path), -1)?;
     if img_frames.is_empty() {
@@ -877,7 +881,7 @@ async fn search_by_image(
     }
     let search_vec = &img_frames[0].2;
 
-    let memory = state.memory_db.lock().unwrap();
+    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
     if memory.is_empty() {
         return Err("Memory Matrix is empty!".to_string());
     }
@@ -896,6 +900,7 @@ async fn search_by_image(
                     matched_tags: vec!["🖼️ Visual".to_string()],
                     ocr_text: meta.ocr_text.clone(),
                     user_note: meta.user_note.clone(),
+                    index_time: meta.index_time,
                 })
             } else {
                 None
@@ -1115,17 +1120,12 @@ fn main() {
     // Initialize database and load memory matrix
     let (db_conn, memory_db) = init_db_and_load_memory();
 
-    // Create ZMQ socket for Python communication
-    let context = zmq::Context::new();
-    let socket = context.socket(zmq::REQ).unwrap();
-    socket.connect("tcp://127.0.0.1:5555").unwrap();
-
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
-            zmq_socket: Mutex::new(socket),
+            // zmq_socket: Mutex::new(socket),
             db_conn: Mutex::new(db_conn),
-            memory_db: Mutex::new(memory_db),
+            memory_db: RwLock::new(memory_db),
             trial_guard: Mutex::new(TrialGuard::new()),
         })
         .setup(|app| {
@@ -1149,6 +1149,8 @@ fn main() {
             delete_smart_folder,
             activate_pro_license,
             get_license_status,
+            list_all_files,
+            get_all_files,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri Build Fail");

@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0csearch.proto\x12\nframescout\" \n\nBatchPaths\x12\x12\n\nfile_paths\x18\x01 \x03(\t\"y\n\rEncodeRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x13\n\tfile_path\x18\x02 \x01(\tH\x00\x12\x0e\n\x04text\x18\x03 \x01(\tH\x00\x12\'\n\x05\x62\x61tch\x18\x04 \x01(\x0b\x32\x16.framescout.BatchPathsH\x00\x42\t\n\x07payload\";\n\tErrorInfo\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0f\n\x07\x63ontext\x18\x03 \x01(\t\"U\n\x0b\x46rameResult\x12\x11\n\ttimestamp\x18\x01 \x01(\x02\x12\x0e\n\x06vector\x18\x02 \x03(\x02\x12\x10\n\x08ocr_text\x18\x03 \x01(\t\x12\x11\n\tfile_path\x18\x04 \x01(\t\"9\n\x0eSuccessPayload\x12\'\n\x06\x66rames\x18\x01 \x03(\x0b\x32\x17.framescout.FrameResult\"\x82\x01\n\x0e\x45ncodeResponse\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12-\n\x07success\x18\x02 \x01(\x0b\x32\x1a.framescout.SuccessPayloadH\x00\x12&\n\x05\x65rror\x18\x03 \x01(\x0b\x32\x15.framescout.ErrorInfoH\x00\x42\x08\n\x06resultb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0csearch.proto\x12\nframescout\" \n\nBatchPaths\x12\x12\n\nfile_paths\x18\x01 \x03(\t\"y\n\rEncodeRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x13\n\tfile_path\x18\x02 \x01(\tH\x00\x12\x0e\n\x04text\x18\x03 \x01(\tH\x00\x12\'\n\x05\x62\x61tch\x18\x04 \x01(\x0b\x32\x16.framescout.BatchPathsH\x00\x42\t\n\x07payload\";\n\tErrorInfo\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0f\n\x07\x63ontext\x18\x03 \x01(\t\"i\n\x0b\x46rameResult\x12\x11\n\ttimestamp\x18\x01 \x01(\x02\x12\x0e\n\x06vector\x18\x02 \x03(\x02\x12\x10\n\x08ocr_text\x18\x03 \x01(\t\x12\x11\n\tfile_path\x18\x04 \x01(\t\x12\x12\n\nindex_time\x18\x05 \x01(\x01\"9\n\x0eSuccessPayload\x12\'\n\x06\x66rames\x18\x01 \x03(\x0b\x32\x17.framescout.FrameResult\"\x82\x01\n\x0e\x45ncodeResponse\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12-\n\x07success\x18\x02 \x01(\x0b\x32\x1a.framescout.SuccessPayloadH\x00\x12&\n\x05\x65rror\x18\x03 \x01(\x0b\x32\x15.framescout.ErrorInfoH\x00\x42\x08\n\x06resultb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -28,9 +28,9 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_ERRORINFO']._serialized_start=185
   _globals['_ERRORINFO']._serialized_end=244
   _globals['_FRAMERESULT']._serialized_start=246
-  _globals['_FRAMERESULT']._serialized_end=331
-  _globals['_SUCCESSPAYLOAD']._serialized_start=333
-  _globals['_SUCCESSPAYLOAD']._serialized_end=390
-  _globals['_ENCODERESPONSE']._serialized_start=393
-  _globals['_ENCODERESPONSE']._serialized_end=523
+  _globals['_FRAMERESULT']._serialized_end=351
+  _globals['_SUCCESSPAYLOAD']._serialized_start=353
+  _globals['_SUCCESSPAYLOAD']._serialized_end=410
+  _globals['_ENCODERESPONSE']._serialized_start=413
+  _globals['_ENCODERESPONSE']._serialized_end=543
 # @@protoc_insertion_point(module_scope)

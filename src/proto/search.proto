@@ -4,7 +4,7 @@
 // Compile with: protoc --python_out=. search.proto (Python)
 // Compile with: prost-build in build.rs (Rust)
 //
-// Version: 3.0.1
+// Version: 3.0.2
 // Author: bobgsning
 
 syntax = "proto3";
@@ -59,6 +59,7 @@ message FrameResult {
   repeated float vector = 2;     // 768-dimensional SigLIP 2 embedding
   string ocr_text = 3;           // Extracted text from EasyOCR
   string file_path = 4;          // Absolute path to source file
+  double index_time = 5;         // 🌟 Storage Time (Unix Timestamp, seconds)
 }
 
 // ============================================================

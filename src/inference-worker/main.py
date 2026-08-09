@@ -23,6 +23,7 @@ import zmq
 import search_pb2
 import easyocr
 from PIL import Image
+import time
 
 # Transformers Processor for preprocessing
 from transformers import AutoProcessor
@@ -226,6 +227,7 @@ def main():
                     for p, vec, ocr in zip(valid_paths, vectors, ocr_texts):
                         frame_res = search_pb2.FrameResult(
                             timestamp=0.0,
+                            index_time=time.time(),   # 🌟 Add storage time
                             ocr_text=ocr,
                             file_path=p
                         )
@@ -266,6 +268,7 @@ def main():
 
                     frame_res = search_pb2.FrameResult(
                         timestamp=timestamp,
+                        index_time=time.time(),   # 🌟 Add storage time
                         ocr_text=extracted_text,
                         file_path=req.file_path
                     )
@@ -292,6 +295,7 @@ def main():
 
                 frame_res = search_pb2.FrameResult(
                     timestamp=0.0,
+                    index_time=time.time(),   # 🌟 Add storage time
                     ocr_text="", 
                     file_path=""
                 )

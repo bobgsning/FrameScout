@@ -315,6 +315,11 @@
           </button>
 
           <button v-if="searchQuery" @click="promptSaveSmartFolder" class="btn btn-secondary" title="Save this search as a Smart Folder">⭐ Save Smart</button>
+
+          <button @click="showAllFiles" class="btn btn-outline-primary" title="Display all indexed files">
+            📋 All Files
+          </button>
+
         </div>
 
         <p v-if="searchMsg" class="error-msg">{{ searchMsg }}</p>
@@ -407,7 +412,7 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="totalResults > 0" class="pagination-wrapper">
+      <div v-if="totalResults > 0 && !isShowAllMode" class="pagination-wrapper">
         <button @click="changePage(-1)" :disabled="currentPage === 1" class="btn btn-secondary btn-sm">Prev</button>
 
         <div class="page-info">
@@ -415,12 +420,21 @@
           <p class="page-total">(Total {{ totalResults }} hits)</p>
         </div>
 
+        <button @click="showAllFiles" class="btn btn-show-all" title="Load all indexed files at once">
+          📋 Show All
+        </button>
+
         <button @click="changePage(1)" :disabled="currentPage >= totalPages" class="btn btn-secondary btn-sm">Next</button>
 
         <div class="jump-box">
           <span>Jump to</span>
           <input v-model.number="jumpPage" id="jumpPage" @keyup.enter="doJump" type="number" min="1" :max="totalPages" class="jump-input" />
           <button @click="doJump" class="btn btn-primary btn-sm">GO</button>
+        </div>
+
+        <div v-if="isShowAllMode" class="show-all-bar">
+          <span class="show-all-info">📂 Showing all {{ totalResults }} files (no pagination)</span>
+          <button @click="exitShowAllMode" class="btn btn-secondary btn-sm">📄 Paginated View</button>
         </div>
       </div>
     </div>
@@ -436,6 +450,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 // Variable to store the unlisten function, declared at the top of <script setup>
 let unlistenEngineStatus: (() => void) | null = null;
 let unlistenScanProgress: (() => void) | null = null;
+
+let searchRequestId = 0;
 
 // Define interfaces here
 interface SearchResult {
@@ -521,6 +537,11 @@ const licenseKeyInput = ref('')
 const activateMsg = ref('')
 const activateSuccess = ref(false)
 
+const isShowAllMode = ref(false)
+
+
+
+
 
 
 // Ensure handleKeydown is defined at the top level of <script setup> so both onMounted and onUnmounted can access it.
@@ -554,26 +575,28 @@ async function submitActivation() {
   }
 }
 
-function acceptIncomingFiles() {
-  // Exit search/clustering state
+async function acceptIncomingFiles() {
+  // If currently in show-all mode, directly reload all files (new files have been indexed)
+  if (isShowAllMode.value) {
+    await showAllFiles();  // Reload the full list
+    incomingFiles.value = [];
+    showIncomingBanner.value = false;
+    return;
+  }
+
+  // Force exit from search/clustering mode and switch to browse mode.
   searchQuery.value = '';
   isImageSearch.value = false;
   searchImagePath.value = '';
   isClusteringView.value = false;
 
-  // Restore full cache (if available)
-  if (fullResultsCache.value.length > 0) {
-    results.value = [...fullResultsCache.value]
-    totalResults.value = results.value.length
-  }
+  // Force reset to the first page and display the latest files
+  currentPage.value = 1;
+  jumpPage.value = 1;
 
-  // Insert staged files at the top of results
-  incomingFiles.value.forEach(item => {
-    if (!results.value.some(r => r.path === item.path)) {
-      results.value.unshift(item);
-      totalResults.value += 1;
-    }
-  });
+  // Load the first page of the browse mode (backend list_all_files sorts by timestamp descending, latest files at the top)
+  await loadBrowsePage(currentPage.value);
+
   incomingFiles.value = [];
   showIncomingBanner.value = false;
 }
@@ -694,7 +717,7 @@ onMounted(async () => {
           engineReady.value = true;
           engineStatus.value = 'ready';
           engineMessage.value = '';
-          // 引擎就绪后加载 smart folders
+          // Reload smart folders
           loadSmartFolders();
           break;
         case 'connecting':
@@ -730,22 +753,13 @@ onMounted(async () => {
         expandOcr: false
       }))
 
-      if (searchQuery.value || isImageSearch.value || isClusteringView.value) {
-        newItems.forEach((item: typeof newItems[number]) => {
-          if (!incomingFiles.value.some(f => f.path === item.path)) {
-            incomingFiles.value.push(item)
-          }
-        })
-        showIncomingBanner.value = true
-      } else {
-        newItems.forEach((item: typeof newItems[number]) => {
-          if (!results.value.some(r => r.path === item.path)) {
-            results.value.unshift(item)
-            totalResults.value += 1
-            fullResultsCache.value.unshift(item)
-          }
-        })
-      }
+      // ★ 🌟 IncomingFiles is a reactive array that holds newly indexed files. We check for duplicates before adding.
+      newItems.forEach((item: typeof newItems[number]) => {
+        if (!incomingFiles.value.some(f => f.path === item.path)) {
+          incomingFiles.value.push(item);
+        }
+      });
+      showIncomingBanner.value = true;
     }
   })
   unlistenScanProgress = unlistenScan
@@ -803,15 +817,18 @@ async function startScan() {
 }
 
 async function toggleClustering() {
-  // Save a full snapshot before entering clustering view
   if (!isClusteringView.value) {
+    // Enter: save current results and switch to clustering view
     fullResultsCache.value = [...results.value]
-  }
-  isClusteringView.value = !isClusteringView.value
-  if (isClusteringView.value) {
+    isClusteringView.value = true
     await fetchClusters()
+  } else {
+    // Exit: restore previous results
+    results.value = fullResultsCache.value
+    isClusteringView.value = false
   }
 }
+
 async function fetchClusters() {
   try {
     const res: any = await invoke('cluster_similar_images', { threshold: clusterThreshold.value });
@@ -821,15 +838,49 @@ async function fetchClusters() {
   }
 }
 
+async function loadBrowsePage(page: number) {
+  try {
+    const response: any = await invoke('list_all_files', {
+      page: page,
+      limit: pageSize.value
+    });
+
+    if (response.items.length === 0 && page > 1) {
+      const lastPage = Math.max(1, Math.ceil(response.total_count / pageSize.value));
+      if (lastPage !== page) {
+        currentPage.value = lastPage;
+        jumpPage.value = lastPage;
+        return loadBrowsePage(lastPage);
+      }
+    }
+
+    results.value = response.items;
+    totalResults.value = response.total_count;
+    fullResultsCache.value = [...results.value];
+
+  } catch (err) {
+    searchMsg.value = `⚠️ Failed to load files: ${err}`;
+  }
+}
+
 async function cleanGhosts() {
   if(!confirm("Are you sure you want to purge records of physically deleted files from the database?")) return;
   try {
-    const count = await invoke('clean_ghosts');
+    const result: { removed_count: number, removed_paths: string[] } = await invoke('clean_ghosts');
+    const count = result?.removed_count ?? 0;
     alert(`🧹 Successfully purged ${count} ghost records!`);
-    // Clear current search state; no need to return to browse-all mode
-    // searchQuery.value = '';
-    searchImagePath.value = '';
-    resetAndSearch();
+    const removedSet = new Set(result?.removed_paths ?? []);
+    results.value = results.value.filter(r => !removedSet.has(r.path));
+    totalResults.value = Math.max(0, totalResults.value - count);
+    
+    // Judge if currently in browsing mode (no search query, no image search, no clustering)
+    if (!searchQuery.value && !isImageSearch.value && !isClusteringView.value) {
+      // Browsing Mode: Reload full dataset
+      await loadBrowsePage(currentPage.value); // Reload the current page of results after purging
+    } else {
+      // Search/Clustering Mode: Refresh current search results
+      await performSearch();
+    }
   } catch(err) { alert("Purge failed: " + err); }
 }
 
@@ -839,10 +890,6 @@ async function saveNote(item: any) {
 }
 
 async function resetAndSearch() {
-  // If currently in browse mode, save a full snapshot
-  if (!searchQuery.value && !isImageSearch.value && !isClusteringView.value) {
-    fullResultsCache.value = [...results.value]
-  }
   isImageSearch.value = false
   currentPage.value = 1
   jumpPage.value = 1
@@ -850,10 +897,6 @@ async function resetAndSearch() {
 }
 
 async function searchByImageAction() {
-  // Save current full snapshot (if in browse mode)
-  if (!searchQuery.value && !isImageSearch.value && !isClusteringView.value) {
-    fullResultsCache.value = [...results.value]
-  }
   const selected = await open({
     multiple: false,
     filters: [{ name: 'Images', extensions: ['png', 'jpeg', 'jpg', 'webp'] }]
@@ -867,7 +910,14 @@ async function searchByImageAction() {
   }
 }
 
-async function changePage(delta: number) { currentPage.value += delta; jumpPage.value = currentPage.value; await performSearch() }
+async function changePage(delta: number) {
+  const newPage = currentPage.value + delta;
+  if (newPage < 1 || newPage > totalPages.value) return;
+  if (newPage > totalPages.value) return;
+  currentPage.value = newPage;
+  jumpPage.value = currentPage.value;
+  await performSearch();
+}
 
 async function doJump() {
   if (jumpPage.value < 1) jumpPage.value = 1;
@@ -877,6 +927,7 @@ async function doJump() {
 }
 
 function clearImageSearch() {
+  if (!isImageSearch.value) return; // No action needed if not in image search mode
   isImageSearch.value = false;
   searchImagePath.value = '';
   searchQuery.value = '';
@@ -885,7 +936,13 @@ function clearImageSearch() {
 }
 
 async function performSearch() {
-  if (!searchQuery.value && !isImageSearch.value) { results.value = []; totalResults.value = 0; return; }
+  isShowAllMode.value = false;
+
+  const currentId = ++searchRequestId;
+
+  if (!searchQuery.value && !isImageSearch.value) {
+    results.value = []; totalResults.value = 0; return;
+  }
   searchMsg.value = '';
 
   for (const [_, timerId] of videoTimers) {
@@ -896,13 +953,19 @@ async function performSearch() {
   try {
     let response: any = null;
     if (isImageSearch.value) {
-      response = await invoke('search_by_image', { imagePath: searchImagePath.value, page: currentPage.value, limit: pageSize.value });
+      response = await invoke('search_by_image', {
+        imagePath: searchImagePath.value, page: currentPage.value, limit: pageSize.value
+      });
     } else {
       response = await invoke('search_images', {
         text: searchQuery.value, page: currentPage.value, limit: pageSize.value,
         useVector: s_vector.value, useOcr: s_ocr.value, useNote: s_note.value, useFilename: s_filename.value
       });
     }
+
+    // ★ 🌟 Check if this response is still relevant (i.e., no newer search has been initiated)
+    if (currentId !== searchRequestId) return;
+
     let res = response.items;
     totalResults.value = response.total_count;
 
@@ -925,7 +988,11 @@ async function performSearch() {
       }
     });
     results.value = res;
-  } catch (err) { searchMsg.value = `⚠️ Error: ${err}` }
+  } catch (err) {
+    if (currentId === searchRequestId) {
+      searchMsg.value = `⚠️ Error: ${err}`;
+    }
+  }
 }
 
 function handleVideoError(item: any) {
@@ -948,6 +1015,27 @@ function handleVideoLoaded(item: any) {
 function dismissIncomingBanner() {
   showIncomingBanner.value = false
   // Do not delete incomingFiles; it will be shown again on the next scan
+}
+
+async function showAllFiles() {
+  try {
+    const allItems: SearchResult[] = await invoke('get_all_files');
+    results.value = allItems;
+    totalResults.value = allItems.length;
+    isShowAllMode.value = true;
+    searchQuery.value = '';
+    isImageSearch.value = false;
+    searchImagePath.value = '';
+  } catch (err) {
+    searchMsg.value = `⚠️ Failed to load all files: ${err}`;
+  }
+}
+
+function exitShowAllMode() {
+  isShowAllMode.value = false;
+  currentPage.value = 1;
+  jumpPage.value = 1;
+  loadBrowsePage(1);
 }
 
 </script>
@@ -1479,6 +1567,39 @@ button:disabled {
 .btn-collapse-up:hover {
   background: rgba(255,255,255,0.06);
   color: #bbb;
+}
+
+.btn-show-all {
+  background: var(--grad-champagne);
+  color: #000;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 8px rgba(231, 238, 195, 0.3);
+}
+.btn-show-all:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 12px rgba(231, 238, 195, 0.5);
+}
+
+.show-all-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  margin-top: 20px;
+  padding: 12px 20px;
+  background: #1a1a28;
+  border-radius: 8px;
+  border: 1px solid #333348;
+}
+.show-all-info {
+  color: #ccc;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 </style>

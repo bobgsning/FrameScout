@@ -59,6 +59,13 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet:
 | 📁 **Smart Folders** | Save any search as a dynamic folder that updates automatically when new files are added. |
 | 📝 **Personal Notes** | Attach markdown notes to any image. Notes are searchable. Next time you’ll find it more effortlessly. |
 
+### 🎬 Video Frame Semantic Search with Instant Seek
+
+FrameScout doesn't just find videos — it pinpoints the **exact timestamp**:
+
+- **Semantic Matching**: Search using natural language (e.g., *"sunset under the pier"* or *"code snippet on screen"*).
+- **One-Click Instant Seek**: Click any search result to jump directly to that exact second (`01:23:45`) in your video.
+
 ---
 
 ## 📁 Repository Structure (Key Directories)
