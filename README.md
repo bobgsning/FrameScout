@@ -16,6 +16,8 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 📖 [Quick Start](#-quick-start-development) ·
 🤝 [Contributing](CONTRIBUTING.md)
 
+> 🆕 **v3.0.2 is here!** New files now appear first thanks to index-time sorting. Try the new **“Show All”** button for a complete overview. [See changelog](CHANGELOG.md#302---2026-08-09).
+
 > **Just want to try it?** Download the latest Windows executable from the [https://github.com/bobgsning/FrameScout/releases](https://github.com/bobgsning/FrameScout/releases) — no installation required. Unzip and run.
 
 ---
@@ -32,7 +34,7 @@ FrameScout offers a **third way**: AI-powered search that runs entirely on your 
 
 ---
 
-## 🛠️ Known Limitations (v3.0.1)
+## 🛠️ Known Limitations (v3.0.2)
 
 We believe in transparency. Here's what FrameScout *doesn't* do yet:
 
@@ -43,6 +45,7 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet:
 | FlatVector search is O(N·d) | Will migrate to Faiss/Annoy when N > 50K |
 | No filesystem real-time monitoring | Manual re-scan; inotify/watchdog planned |
 | No LLM-generated captions | Deliberate — would require network access |
+| “Show All” mode may lag with >10K files | Virtual scrolling planned for v3.1 |
 
 ---
 
@@ -54,6 +57,7 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet:
 | 💡 **Semantic Search (ONNX + SigLIP 2)** | Type words and find matching images by meaning, not just filenames. |
 | 🖼️ **Image-to-Image Search** | Drop a reference image to find visually similar ones in your library. |
 | 🔍 **OCR Text Search** | Extracts and indexes text from images. Like searching *"receipt from March"* and find it instantly. |
+| 📋 **Show All Mode** | Load every indexed file. New files are sorted by intake time and always appear at the top. |
 | 🎬 **Video Frame Indexing** | Automatically extracts key frames from videos and indexes them alongside static images. |
 | 🧩 **Visual Clustering** | Discover groups of similar images (duplicates, near-duplicates, burst shots) with one click. |
 | 📁 **Smart Folders** | Save any search as a dynamic folder that updates automatically when new files are added. |
@@ -65,6 +69,8 @@ FrameScout doesn't just find videos — it pinpoints the **exact timestamp**:
 
 - **Semantic Matching**: Search using natural language (e.g., *"sunset under the pier"* or *"code snippet on screen"*).
 - **One-Click Instant Seek**: Click any search result to jump directly to that exact second (`01:23:45`) in your video.
+
+> **New in v3.0.2**: Newly indexed files are sorted by their ingestion time, so the most recent additions always appear first in browse mode. Click the “📋 Show All” button to see every file at once.
 
 ---
 
@@ -185,7 +191,7 @@ Tested on a desktop with AMD Ryzen 7 5800X + 32GB RAM + NVIDIA RTX 3070 (ONNX wi
 | 10,000 images   | 7.2 ms             | 9.5 ms              | ~800 img/min     |
 | 50,000 images   | 38.0 ms            | 45.0 ms             | ~600 img/min     |
 
-> **Disclaimer**: These are benchmark results from our development environment. Actual performance depends on your hardware and dataset characteristics. Reproduce on your machine using the provided benchmark script (coming soon).
+> **Disclaimer**: These are benchmark results from our development environment. Actual performance depends on your hardware and dataset characteristics. Reproduce on your machine using the provided benchmark script (coming soon). v3.0.2 introduces index-time ordering, which does not affect query latency.
 
 ---
 
@@ -269,11 +275,12 @@ Now `npm run tauri dev` will automatically start the compiled worker.
 - [x] Visual clustering
 - [x] Smart folders
 - [x] SigLIP 2 migration (768D embeddings, ONNX Runtime)
-- [ ] RwLock optimization (fix search-during-scan blocking)
+- [x] Index-time sorting (new files always appear first)
+- [x] “Show All” mode (flat listing without pagination)
+- [x] RwLock optimization (non-blocking search during scan)
 - [ ] Hover tooltips with file metadata
 - [ ] Per-image delete (not just bulk ghost purge)
 - [ ] Video timeout reduced to 10s + loading animation
-- [ ] Score normalization moved to backend
 
 ### v3.1 (Cross-Platform & UX)
 
