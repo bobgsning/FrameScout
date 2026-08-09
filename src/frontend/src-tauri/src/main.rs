@@ -15,7 +15,7 @@
 // limitations under the License.
 
 // =========================================================================
-//  FrameScout — Rust/Tauri Core
+//  FrameScout — Offline AI Search — Rust/Tauri Core
 //  Version: 3.0.2
 //  License: Apache-2.0 (core) / Proprietary (license verification)
 //
@@ -92,7 +92,7 @@ mod license {
     }
 
     pub fn check_local_license() -> (bool, String) {
-        let app_data_dir = dirs::data_local_dir().unwrap().join("FrameScout_Global");
+        let app_data_dir = dirs::data_local_dir().unwrap().join("FrameScout—Offline_AI_Search—Global");
         let lic_path = app_data_dir.join("framescout.lic");
 
         match fs::read_to_string(lic_path) {
@@ -363,12 +363,12 @@ fn request_vector(
 // =========================================================================
 fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
     println!("💾 Connecting to local SQLite Hybrid Matrix...");
-    let app_data_dir = dirs::data_local_dir().unwrap().join("FrameScout_Global");
+    let app_data_dir = dirs::data_local_dir().unwrap().join("FrameScout—Offline_AI_Search—Global");
     if let Err(e) = fs::create_dir_all(&app_data_dir) {
         println!("⚠️ Warning: Failed to create AppData directory: {}", e);
     }
 
-    let db_path = app_data_dir.join("framescout_global.db");
+    let db_path = app_data_dir.join("framescout—offline_ai_search—global.db");
     let conn = Connection::open(&db_path).expect("Failed to open database");
 
     // WAL mode allows concurrent reads during writes
@@ -993,6 +993,98 @@ async fn delete_smart_folder(state: tauri::State<'_, AppState>, id: i64) -> Resu
     db.execute("DELETE FROM smart_folders WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct PaginatedResult {
+    items: Vec<SearchResult>,
+    total_count: usize,
+}
+
+#[tauri::command]
+fn list_all_files(
+    state: tauri::State<'_, AppState>,
+    page: u32,
+    limit: u32,
+) -> Result<PaginatedResult, String> {
+    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let offset = (page.saturating_sub(1)) * limit;
+
+    // Get the total count
+    let total_count: i64 = db
+        .query_row("SELECT COUNT(*) FROM frame_vectors", [], |row| row.get(0))
+        .map_err(|e| format!("DB count error: {}", e))?;
+    let total_count = total_count as usize;
+
+    // Fetch paginated results
+    let mut stmt = db
+        .prepare(
+            "SELECT path, timestamp, vector_json, ocr_text, user_note, index_time
+             FROM frame_vectors
+             ORDER BY index_time DESC
+             LIMIT ?1 OFFSET ?2",
+        )
+        .map_err(|e| format!("Prepare error: {}", e))?;
+
+    let items = stmt
+        .query_map(params![limit, offset], |row| {
+            let path: String = row.get(0)?;
+            let timestamp: f64 = row.get(1)?;
+            let _vector_json: String = row.get(2)?; // Not used in this context, but retrieved for completeness
+            let ocr_text: String = row.get(3)?;
+            let user_note: String = row.get(4).unwrap_or_default();
+            let index_time: f64 = row.get(5).unwrap_or(0.0);
+            Ok(SearchResult {
+                path,
+                timestamp: timestamp as f32,
+                score: 2.0, // Placeholder score for listing, not used in this context
+                matched_tags: vec!["📂 All Files".to_string()],
+                ocr_text,
+                user_note,
+                index_time,
+            })
+        })
+        .map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(PaginatedResult { items, total_count })
+}
+
+#[tauri::command]
+fn get_all_files(state: tauri::State<'_, AppState>) -> Result<Vec<SearchResult>, String> {
+    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = db
+        .prepare(
+            "SELECT path, timestamp, vector_json, ocr_text, user_note, index_time
+             FROM frame_vectors
+             ORDER BY index_time DESC"
+        )
+        .map_err(|e| format!("Prepare error: {}", e))?;
+
+    let items = stmt
+        .query_map([], |row| {
+            let path: String = row.get(0)?;
+            let timestamp: f64 = row.get(1)?;
+            let _vector_json: String = row.get(2)?;
+            let ocr_text: String = row.get(3)?;
+            let user_note: String = row.get(4).unwrap_or_default();
+            let index_time: f64 = row.get(5).unwrap_or(0.0);
+            Ok(SearchResult {
+                path,
+                timestamp: timestamp as f32,
+                score: 2.0,
+                matched_tags: vec!["📂 All Files".to_string()],
+                ocr_text,
+                user_note,
+                index_time,
+            })
+        })
+        .map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(items)
 }
 
 fn wait_for_engine_and_notify(app_handle: tauri::AppHandle) {

@@ -1,6 +1,6 @@
 <!--
   SPDX-License-Identifier: Apache-2.0
-  FrameScout — Vue 3 Frontend
+  FrameScout — Offline AI Search — Vue 3 Frontend
   =============================
   Main UI for FrameScout desktop application.
 
@@ -149,7 +149,7 @@
       <svg width="36" height="36" viewBox="0 0 1000 1000" fill="none">
         <use href="#framescout-logo"/>
       </svg>
-      <h1 class="brand-header">FrameScout: Global Edition</h1>
+      <h1 class="brand-header">FrameScout — Offline AI Search: Global Edition</h1>
 
       <!-- License status button (right-aligned) -->
       <div class="license-badge" @click="showActivateModal = true">

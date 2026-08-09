@@ -1,5 +1,5 @@
 """
-FrameScout Inference Worker (ONNX + SigLIP 2 Edition)
+FrameScout — Offline AI Search Inference Worker (ONNX + SigLIP 2 Edition)
 =====================================================
 Python process that handles all AI inference using ONNX Runtime:
 - Universal GPU Acceleration (NVIDIA / AMD / Intel DirectML + CUDA + CPU)
@@ -116,8 +116,8 @@ def extract_video_frames(video_path, extract_fps=1, max_duration=3600):
 #  Main Loop
 # ============================================================
 def main():
-    # Create FrameScout_Global Folder in temp directory for logs
-    log_dir = os.path.join(tempfile.gettempdir(), 'FrameScout_Global')
+    # Create FrameScout—Offline_AI_Search—Global Folder in temp directory for logs
+    log_dir = os.path.join(tempfile.gettempdir(), 'FrameScout—Offline_AI_Search—Global', 'logs')
     os.makedirs(log_dir, exist_ok=True)
 
     # Redirect stdout/stderr to log file for debugging
