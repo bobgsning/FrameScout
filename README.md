@@ -36,7 +36,7 @@ FrameScout offers a **third way**: AI-powered search that runs entirely on your 
 
 ## 🛠️ Known Limitations (v3.0.2)
 
-We believe in transparency. Here's what FrameScout *doesn't* do yet:
+We believe in transparency. Here's what FrameScout *doesn’t* do yet:
 
 | Limitation | Workaround / Future Plan |
 | ---------- | ------------------------ |
