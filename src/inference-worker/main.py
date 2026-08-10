@@ -113,6 +113,53 @@ def extract_video_frames(video_path, extract_fps=1, max_duration=3600):
 
 
 # ============================================================
+# Dynamic EasyOCR Manager (Lazy Loader & Language Model Cache)
+# ============================================================
+class DynamicOcrManager:
+    """
+    Dynamically loads and manages EasyOCR instances based on requested language combinations.
+    Avoids pre-allocating memory for unused OCR models during fast vision scans.
+    """
+    def __init__(self, model_storage_dir: str):
+        self.model_storage_dir = model_storage_dir
+        self._readers = {}
+
+    def get_reader(self, languages: list[str]) -> easyocr.Reader:
+        if not languages:
+            languages = ['en']
+        
+        cache_key = "_".join(sorted(languages))
+        if cache_key not in self._readers:
+            print(f"⏳ [OCR Manager] Dynamic loading EasyOCR model for languages: {languages}")
+            try:
+                self._readers[cache_key] = easyocr.Reader(
+                    languages,
+                    gpu=True,
+                    model_storage_directory=self.model_storage_dir,
+                    download_enabled=False
+                )
+            except Exception as e:
+                print(f"⚠️ [OCR Manager] GPU init failed, falling back to CPU for {languages}: {e}")
+                self._readers[cache_key] = easyocr.Reader(
+                    languages,
+                    gpu=False,
+                    model_storage_directory=self.model_storage_dir,
+                    download_enabled=False
+                )
+        return self._readers[cache_key]
+
+    def process_image(self, img_input, languages: list[str]) -> str:
+        try:
+            reader = self.get_reader(languages)
+            res = reader.readtext(img_input, detail=0)
+            return " ".join(res)
+        except Exception as e:
+            print(f"⚠️ OCR extraction failed: {e}")
+            return ""
+
+
+
+# ============================================================
 #  Main Loop
 # ============================================================
 def main():
@@ -161,21 +208,9 @@ def main():
     text_session = create_onnx_session(text_onnx)
 
     print(f"⏳ Initializing EasyOCR Engine from: {ocr_path}")
-    try:
-        reader = easyocr.Reader(
-            ['en'], 
-            gpu=True,  # EasyOCR will handle GPU check internally
-            model_storage_directory=ocr_path, 
-            download_enabled=False
-        )
-    except Exception:
-        # Fallback to CPU for OCR if GPU init fails
-        reader = easyocr.Reader(
-            ['en'], 
-            gpu=False, 
-            model_storage_directory=ocr_path, 
-            download_enabled=False
-        )
+
+    # Initialize OCR Manager in main()
+    ocr_manager = DynamicOcrManager(ocr_path)
 
     print("🚀 [AI Worker] ONNX Multi-Hardware Engine online! Listening on port 5555...")
 
@@ -193,7 +228,11 @@ def main():
             # ---- Batch Processing (folder scanning) ----
             if payload_type == "batch":
                 paths = req.batch.file_paths
-                print(f"[PYTHON] Batch request: {len(paths)} paths")
+                ocr_cfg = req.batch.ocr_config
+                enable_ocr = ocr_cfg.enable_ocr if ocr_cfg else False
+                ocr_langs = list(ocr_cfg.languages) if (ocr_cfg and ocr_cfg.languages) else ["en"]
+
+                print(f"[PYTHON] Batch request: {len(paths)} paths (OCR Enabled: {enable_ocr}, Languages: {ocr_langs})")
                 
                 pil_images = []
                 valid_paths = []
@@ -212,8 +251,11 @@ def main():
                     # OCR (per-image to avoid OOM)
                     ocr_texts = []
                     for img_np in [np.array(img) for img in pil_images]:
-                        ocr_res = reader.readtext(img_np, detail=0)
-                        ocr_texts.append(" ".join(ocr_res))
+                        if enable_ocr:
+                            ocr_text = ocr_manager.process_image(img_np, ocr_langs)
+                            ocr_texts.append(ocr_text)
+                        else:
+                            ocr_texts.append("") # Fast path: Skip OCR entirely
 
                     # ONNX Vision Inference
                     inputs = processor(images=pil_images, return_tensors="np")
@@ -234,6 +276,31 @@ def main():
                         frame_res.vector.extend(vec)  # 🌟 Use standard .extend to populate the list
                         result_frames.append(frame_res)
 
+            # ---- On-Demand Selective OCR Task ----
+            elif payload_type == "ocr_task":
+                task_paths = req.ocr_task.file_paths
+                task_langs = list(req.ocr_task.languages) if req.ocr_task.languages else ["en"]
+                print(f"[PYTHON] On-demand OCR task for {len(task_paths)} files using languages: {task_langs}")
+
+                for p in task_paths:
+                    extracted_text = ""
+                    try:
+                        img_bgr = cv2.imdecode(np.fromfile(p, dtype=np.uint8), cv2.IMREAD_COLOR)
+                        if img_bgr is not None:
+                            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                            extracted_text = ocr_manager.process_image(img_rgb, task_langs)
+                    except Exception as e:
+                        print(f"⚠️ Failed to process OCR for {p}: {e}")
+
+                    frame_res = search_pb2.FrameResult(
+                        timestamp=0.0,
+                        index_time=time.time(),
+                        ocr_text=extracted_text,
+                        file_path=p
+                    )
+                    # Vector stays empty since this is an OCR-only dynamic patch task
+                    result_frames.append(frame_res)
+
             # ---- Single File (image or video) ----
             elif payload_type == "file_path":
                 ext = os.path.splitext(req.file_path)[-1].lower()
@@ -251,8 +318,8 @@ def main():
                         image_tasks = [(0.0, img_rgb)]
 
                 for timestamp, frame_rgb in image_tasks:
-                    ocr_results = reader.readtext(frame_rgb, detail=0)
-                    extracted_text = " ".join(ocr_results)
+                    ocr_results = ocr_manager.process_image(frame_rgb, ['en'])
+                    extracted_text = ocr_results
 
                     if extracted_text:
                         print(f"   [T={timestamp}s] OCR: {extracted_text[:80]}")

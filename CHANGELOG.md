@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.3] - 2026-08-10
+
+### Added v3.0.3
+
+- **Backend-Driven Smart Folders**: Smart Folder definitions are now stored exclusively in SQLite (`smart_folders` table). New backend command `execute_smart_folder` executes searches natively using the same engine as manual queries. Frontend no longer caches any folder rules — no more lost folders after clearing browser data.
+- **Dynamic Match Count Badges**: `get_smart_folders` now returns `match_count` for each folder, computed by scanning in-memory metadata for text matches. For folders relying solely on vector search (no OCR/note/filename), a `?` badge is displayed instead of `0`, indicating the count is unknown until executed.
+- **On-Demand OCR for Selected Files**: Users can now run OCR on specific files with custom language settings. The `run_ocr_for_selected_files` command accepts a list of file paths and language codes (e.g., `en`, `ch_sim`, `ja`). OCR results are updated in both SQLite and the in-memory metadata immediately.
+- **Automatic Cleanup of Legacy Browser Storage**: On startup, the application removes old `localStorage` keys (`framescout_smart_folders`, `framescout_folder_path`) to prevent interference from previous versions.
+
+### Changed v3.0.3
+
+- **SmartFolder struct**: Extended with `match_count: usize` field, populated by the backend.
+- **Frontend `applySmartFolder`**: Now calls `execute_smart_folder` instead of relying on local cached rules.
+- **`selectFolder` and `savePath`**: Completely removed `localStorage.setItem` calls. Folder path is no longer persisted to browser storage (future versions may introduce backend-based preference storage).
+- **Template Smart Folder badge**: For pure vector folders, renders `?` instead of `0`.
+- **OCR language configuration**: The `enable_ocr` and `ocr_languages` parameters are now passed explicitly to `scan_folder` and `index_files`. Users can also trigger OCR on already-indexed files via the new per-item OCR button.
+- **Scan progress events**: Now include `new_files` array for immediate display in the incoming files banner, without disrupting the current search results.
+
+### Fixed v3.0.3
+
+- **Smart Folder count always showing 0**: Previously, `get_smart_folders` only counted text matches, ignoring the `use_vector` flag. Now pure vector folders show `?` to avoid misleading zeros.
+- **Runtime error from commented-out `savePath` function**: The function and all its invocations have been deleted.
+- **Potential duplication of Smart Folders**: Old `localStorage` data could merge with backend data; now completely eliminated.
+- **OCR not updating in-memory metadata**: `run_ocr_for_selected_files` now properly updates both SQLite and the `FlatVectorMatrix` metadata.
+
+### Removed v3.0.3
+
+- **Frontend `localStorage` usage**: Removed `savePath` function, `@input="savePath"` binding, and all `localStorage.getItem/setItem` calls (except the startup cleanup).
+
+[3.0.3]: https://github.com/bobgsning/FrameScout/releases/tag/v3.0.3
+
 ## [3.0.2] - 2026-08-09
 
 ### Added v3.0.2

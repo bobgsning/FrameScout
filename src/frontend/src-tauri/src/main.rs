@@ -16,7 +16,7 @@
 
 // =========================================================================
 //  FrameScout — Offline AI Search — Rust/Tauri Core
-//  Version: 3.0.2
+//  Version: 3.0.3
 //  License: Apache-2.0 (core) / Proprietary (license verification)
 //
 //  This file contains the full Rust backend for FrameScout, including:
@@ -290,6 +290,7 @@ pub struct SmartFolder {
     pub use_ocr: bool,
     pub use_note: bool,
     pub use_filename: bool,
+    pub match_count: usize, // 🌟 Dynamic hit count evaluated against backend memory matrix
 }
 
 // =========================================================================
@@ -339,6 +340,7 @@ fn request_vector(
     let req = proto::EncodeRequest {
         task_id: "TASK_GLOBAL".to_string(),
         payload: Some(payload),
+        single_file_ocr_config: None,
     };
     let mut buf = Vec::new();
     req.encode(&mut buf).unwrap();
@@ -458,82 +460,25 @@ fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
 }
 
 // =========================================================================
-//  Tauri Commands
+// Helper: Process explicit list of file paths (Used by scan_folder & drag-and-drop)
 // =========================================================================
-
-/// Ping the Python inference engine to check if it's alive
-#[tauri::command]
-async fn ping_engine(_state: tauri::State<'_, AppState>) -> Result<String, String> {
-    match request_vector(
-        &_state,
-        proto::encode_request::Payload::Text("PING_ENGINE".to_string()),
-        90000,
-    ) {
-        Ok(_) => Ok("READY".to_string()),
-        Err(e) => Err(e),
-    }
-}
-
-/// Scan a folder and index all images/videos
-#[tauri::command]
-async fn scan_folder(
-    app: AppHandle,
-    state: tauri::State<'_, AppState>,
-    folder_path: String,
-    scan_mode: String,
+async fn process_file_paths_internal(
+    app: &AppHandle,
+    state: &tauri::State<'_, AppState>,
+    pending_files: Vec<String>,
+    enable_ocr: bool,
+    ocr_languages: Vec<String>,
 ) -> Result<usize, String> {
-    // Check trial limit
-    {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
-        state.trial_guard.lock().unwrap().check_limit(memory.len())?;
-    }
-
-    let mut pending_files = Vec::new();
-    let _ = app.emit(
-        "scan-progress",
-        ProgressPayload {
-            status: "🔍 Rapid Pre-scanning...".to_string(),
-            file_path: "".to_string(),
-            current: 0,
-            total: 0,
-            new_files: vec![],
-        },
-    );
-
-    // Walk directory tree
-    for entry in WalkDir::new(&folder_path).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if path.is_file() {
-            let ext = path
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let is_image = ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp";
-            let is_video = ext == "mp4" || ext == "mov" || ext == "avi" || ext == "mkv" || ext == "webm" || ext == "flv";
-            let should_process = match scan_mode.as_str() {
-                "image" => is_image,
-                "video" => is_video,
-                _ => is_image || is_video,
-            };
-
-            if should_process {
-                let path_str = path.to_string_lossy().to_string();
-                let exists = { state.memory_db.read().map_err(|e| e.to_string())?.contains_path(&path_str) };
-                if !exists {
-                    pending_files.push(path_str);
-                }
-            }
-        }
-    }
 
     let total_to_process = pending_files.len();
+
+    // Early exit if no new files to process
     if total_to_process == 0 {
         let _ = app.emit(
             "scan-progress",
             ProgressPayload {
                 status: "✅ Done".to_string(),
-                file_path: "No new files found".to_string(),
+                file_path: "No new files to process".to_string(),
                 current: 0,
                 total: 0,
                 new_files: vec![],
@@ -542,17 +487,27 @@ async fn scan_folder(
         return Ok(0);
     }
 
-    let mut added_count = 0;
-    let mut current_idx = 0;
-    let batch_size = 4;
+    if enable_ocr && ocr_languages.is_empty() {
+        return Err("OCR enabled but no languages specified".to_string());
+    }
+
     let mut consecutive_failures = 0;
     const MAX_CONSECUTIVE_FAILURES: usize = 5;
 
+    let mut added_count = 0;
+    let mut current_idx = 0;
+    let batch_size = 4;
+
     for chunk in pending_files.chunks(batch_size) {
-        // Re-check limit before each batch
+
+        // Check trial limit
         {
             let memory = state.memory_db.read().map_err(|e| e.to_string())?;
             if let Err(err_msg) = state.trial_guard.lock().unwrap().check_limit(memory.len()) {
+                let _detailed_msg = format!(
+                    "{} (currently indexed: {}, limit: {})",
+                    err_msg, memory.len(), FREE_TRIAL_LIMIT
+                );
                 let _ = app.emit(
                     "scan-progress",
                     ProgressPayload {
@@ -566,16 +521,22 @@ async fn scan_folder(
                 return Err(err_msg);
             }
         }
-
         current_idx += chunk.len();
+        
         let batch_payload = proto::BatchPaths {
             file_paths: chunk.to_vec(),
+            ocr_config: Some(proto::OcrConfig {
+                enable_ocr,
+                languages: ocr_languages.clone(),
+            }),
         };
         let payload = proto::encode_request::Payload::Batch(batch_payload);
 
-        match request_vector(&state, payload, -1) {
+        match request_vector(state, payload, -1) {
             Ok(frames) => {
+
                 consecutive_failures = 0;
+
                 let mut db = state.db_conn.lock().unwrap();
                 let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
 
@@ -584,10 +545,13 @@ async fn scan_folder(
 
                 if let Ok(tx) = tx_result {
                     for (file_path, timestamp, vec, ocr_text, index_time) in frames {
-                        let vec_json =
-                            serde_json::to_string(&vec).unwrap_or_else(|_| "[]".to_string());
+                        let vec_json = serde_json::to_string(&vec).unwrap_or_else(|_| "[]".to_string());
                         if tx.execute(
-                            "INSERT INTO frame_vectors (path, timestamp, vector_json, ocr_text, user_note, index_time) VALUES (?1, ?2, ?3, ?4, '', ?5)",
+                            "INSERT INTO frame_vectors (path, timestamp, vector_json, ocr_text, user_note, index_time) 
+                             VALUES (?1, ?2, ?3, ?4, '', ?5)
+                             ON CONFLICT(path) DO UPDATE SET 
+                             ocr_text = excluded.ocr_text, 
+                             index_time = excluded.index_time",
                             params![file_path.clone(), timestamp, vec_json, ocr_text.clone(), index_time],
                         ).is_ok() {
                             memory.push(file_path.clone(), timestamp, vec, ocr_text, "".to_string(), index_time);
@@ -645,7 +609,6 @@ async fn scan_folder(
             }
         }
     }
-
     let _ = app.emit(
         "scan-progress",
         ProgressPayload {
@@ -656,7 +619,190 @@ async fn scan_folder(
             new_files: vec![],
         },
     );
+
     Ok(added_count)
+}
+
+// =========================================================================
+//  Tauri Commands
+// =========================================================================
+
+/// Ping the Python inference engine to check if it's alive
+#[tauri::command]
+async fn ping_engine(_state: tauri::State<'_, AppState>) -> Result<String, String> {
+    match request_vector(
+        &_state,
+        proto::encode_request::Payload::Text("PING_ENGINE".to_string()),
+        90000,
+    ) {
+        Ok(_) => Ok("READY".to_string()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Scan a folder and index all images/videos
+/// Updated Scan Folder Command with explicit OCR Toggles and Language configs
+#[tauri::command]
+async fn scan_folder(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    folder_path: String,
+    scan_mode: String,
+    enable_ocr: bool,
+    ocr_languages: Vec<String>,
+) -> Result<usize, String> {
+
+    // Check trial limit
+    {
+        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        state.trial_guard.lock().unwrap().check_limit(memory.len())?;
+    }
+
+    let _ = app.emit(
+        "scan-progress",
+        ProgressPayload {
+            status: "🔍 Rapid Pre-scanning...".to_string(),
+            file_path: "".to_string(),
+            current: 0,
+            total: 0,
+            new_files: vec![],
+        },
+    );
+
+    let mut pending_files = Vec::new();
+
+    for entry in WalkDir::new(&folder_path).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_file() {
+            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            let is_image = ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp";
+            let is_video = ext == "mp4" || ext == "mov" || ext == "avi" || ext == "mkv" || ext == "webm" || ext == "flv";
+            let should_process = match scan_mode.as_str() {
+                "image" => is_image,
+                "video" => is_video,
+                _ => is_image || is_video,
+            };
+
+            if should_process {
+                let path_str = path.to_string_lossy().to_string();
+                let exists = { state.memory_db.read().map_err(|e| e.to_string())?.contains_path(&path_str) };
+                if !exists {
+                    pending_files.push(path_str);
+                }
+            }
+        }
+    }
+
+    if pending_files.is_empty() {
+        let _ = app.emit(
+            "scan-progress",
+            ProgressPayload {
+                status: "✅ Done".to_string(),
+                file_path: "No new files found".to_string(),
+                current: 0,
+                total: 0,
+                new_files: vec![],
+            },
+        );
+        return Ok(0);
+    }
+
+    process_file_paths_internal(&app, &state, pending_files, enable_ocr, ocr_languages).await
+}
+
+/// 🌟 Target Indexing: Direct Drag-and-Drop or Specific Batch File Indexing
+#[tauri::command]
+async fn index_files(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    file_paths: Vec<String>,
+    enable_ocr: bool,
+    ocr_languages: Vec<String>,
+) -> Result<usize, String> {
+
+    // Check trial limit
+    {
+        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        state.trial_guard.lock().unwrap().check_limit(memory.len())?;
+    }
+    let _ = app.emit(
+        "scan-progress",
+        ProgressPayload {
+            status: format!("📁 Indexing {} files...", file_paths.len()),
+            file_path: "".to_string(),
+            current: 0,
+            total: file_paths.len(),
+            new_files: vec![],
+        },
+    );
+
+    let mut pending_files = Vec::new();
+    let total = file_paths.len();
+
+    {
+        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        for path_str in &file_paths {
+            if !memory.contains_path(&path_str) {
+                pending_files.push(path_str.clone());
+            }
+        }
+    }
+
+    if pending_files.is_empty() {
+        let _ = app.emit(
+            "scan-progress",
+            ProgressPayload {
+                status: "✅ Done".to_string(),
+                file_path: "All files already indexed".to_string(),
+                current: total,
+                total: total,
+                new_files: vec![],
+            },
+        );
+        return Ok(0);
+    }
+
+    process_file_paths_internal(&app, &state, pending_files, enable_ocr, ocr_languages).await
+}
+
+/// 🌟 On-Demand OCR: Run or update OCR specifically for selected files with target languages
+#[tauri::command]
+async fn run_ocr_for_selected_files(
+    state: tauri::State<'_, AppState>,
+    file_paths: Vec<String>,
+    languages: Vec<String>,
+) -> Result<usize, String> {
+    if file_paths.is_empty() {
+        return Ok(0);
+    }
+
+    let ocr_task_payload = proto::SingleOcrTask {
+        file_paths: file_paths.clone(),
+        languages: languages.clone(),
+    };
+    let payload = proto::encode_request::Payload::OcrTask(ocr_task_payload);
+
+    let frames = request_vector(&state, payload, -1)?;
+    let db = state.db_conn.lock().unwrap();
+    let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
+
+    let mut updated_count = 0;
+    for (file_path, _, _, extracted_text, _) in frames {
+        if db.execute(
+            "UPDATE frame_vectors SET ocr_text = ?1 WHERE path = ?2",
+            params![extracted_text.clone(), file_path.clone()],
+        ).is_ok() {
+            // Update in-memory metadata
+            for meta in memory.metadata.iter_mut() {
+                if meta.path == file_path {
+                    meta.ocr_text = extracted_text.clone();
+                }
+            }
+            updated_count += 1;
+        }
+    }
+
+    Ok(updated_count)
 }
 
 /// Visual clustering — O(N²) brute-force pairwise similarity
@@ -949,13 +1095,16 @@ async fn save_smart_folder(
     Ok(db.last_insert_rowid())
 }
 
-/// List all smart folders
+/// List all smart folders and calculate real-time match counts on the backend
 #[tauri::command]
 async fn get_smart_folders(state: tauri::State<'_, AppState>) -> Result<Vec<SmartFolder>, String> {
     let db = state.db_conn.lock().unwrap();
     let mut stmt = db
         .prepare("SELECT id, name, query_text, use_vector, use_ocr, use_note, use_filename FROM smart_folders")
         .map_err(|e| e.to_string())?;
+
+    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+    
     let rows = stmt
         .query_map([], |row| {
             let id: i64 = row.get(0)?;
@@ -965,25 +1114,86 @@ async fn get_smart_folders(state: tauri::State<'_, AppState>) -> Result<Vec<Smar
             let o: i32 = row.get(4)?;
             let n: i32 = row.get(5)?;
             let f: i32 = row.get(6)?;
-            Ok(SmartFolder {
-                id,
-                name,
-                query_text,
-                use_vector: v == 1,
-                use_ocr: o == 1,
-                use_note: n == 1,
-                use_filename: f == 1,
-            })
+            Ok((id, name, query_text, v == 1, o == 1, n == 1, f == 1))
         })
         .map_err(|e| e.to_string())?;
 
     let mut list = Vec::new();
-    for r in rows {
-        if let Ok(sf) = r {
-            list.push(sf);
+    let lower_search_list: Vec<(i64, String, String, bool, bool, bool, bool)> = rows.filter_map(|r| r.ok()).collect();
+
+    for (id, name, query_text, use_vector, use_ocr, use_note, use_filename) in lower_search_list {
+        // Calculate dynamic match count directly against in-memory matrix
+        let mut count = 0;
+        let lower_query = query_text.to_lowercase();
+
+        if !lower_query.is_empty() {
+            for meta in &memory.metadata {
+                let mut matched = false;
+                if use_ocr && !meta.ocr_text.is_empty() && meta.ocr_text.to_lowercase().contains(&lower_query) {
+                    matched = true;
+                }
+                if use_note && !meta.user_note.is_empty() && meta.user_note.to_lowercase().contains(&lower_query) {
+                    matched = true;
+                }
+                if use_filename && meta.path.to_lowercase().contains(&lower_query) {
+                    matched = true;
+                }
+                if matched {
+                    count += 1;
+                }
+            }
         }
+
+        list.push(SmartFolder {
+            id,
+            name,
+            query_text,
+            use_vector,
+            use_ocr,
+            use_note,
+            use_filename,
+            match_count: count,
+        });
     }
+
     Ok(list)
+}
+
+/// 🌟 Execute a Backend Smart Folder directly by ID
+#[tauri::command]
+async fn execute_smart_folder(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+    page: usize,
+    limit: usize,
+) -> Result<PagedResponse, String> {
+    let (query_text, use_vector, use_ocr, use_note, use_filename) = {
+        let db = state.db_conn.lock().unwrap();
+        db.query_row(
+            "SELECT query_text, use_vector, use_ocr, use_note, use_filename FROM smart_folders WHERE id = ?1",
+            params![id],
+            |row| {
+                let q: String = row.get(0)?;
+                let v: i32 = row.get(1)?;
+                let o: i32 = row.get(2)?;
+                let n: i32 = row.get(3)?;
+                let f: i32 = row.get(4)?;
+                Ok((q, v == 1, o == 1, n == 1, f == 1))
+            },
+        ).map_err(|e| format!("Smart folder not found: {}", e))?
+    };
+
+    // Re-use core backend multi-modal search engine
+    search_images(
+        state,
+        query_text,
+        page,
+        limit,
+        use_vector,
+        use_ocr,
+        use_note,
+        use_filename,
+    ).await
 }
 
 /// Delete a smart folder
@@ -1101,6 +1311,7 @@ fn wait_for_engine_and_notify(app_handle: tauri::AppHandle) {
         let ping_req = proto::EncodeRequest {
             task_id: "PING_INIT".to_string(),
             payload: Some(proto::encode_request::Payload::Text("PING_ENGINE".to_string())),
+            single_file_ocr_config: None,
         };
         let mut buf = Vec::new();
         ping_req.encode(&mut buf).unwrap();
@@ -1230,6 +1441,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             scan_folder,
+            index_files,                  // 🌟 Registered: Drag-and-drop / target files indexing
+            run_ocr_for_selected_files,   // 🌟 Registered: On-demand OCR for specific selected files
             search_images,
             ping_engine,
             update_note,
@@ -1238,6 +1451,7 @@ fn main() {
             cluster_similar_images,
             save_smart_folder,
             get_smart_folders,
+            execute_smart_folder,        // 🌟 Registered: Direct backend Smart Folder execution
             delete_smart_folder,
             activate_pro_license,
             get_license_status,

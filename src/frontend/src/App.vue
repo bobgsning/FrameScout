@@ -190,30 +190,48 @@
 
     <!-- Top Action Bar -->
     <div class="top-action-bar">
-      <input v-model="folderPath" id="folderPath" @input="savePath" type="text" placeholder="Paste folder path here, or click Browse..." class="custom-input path-input" />
+      <div class="bar-row">
+        <input v-model="folderPath" id="folderPath" type="text" placeholder="Paste folder path here, or click Browse..." class="custom-input path-input" />
+        <button @click="selectFolder" class="btn btn-secondary">📂 Browse</button>
+      </div>
+      <div class="bar-row">
+        <select v-model="scanMode" id="scanMode" class="custom-select">
+          <option value="all">All Media</option>
+          <option value="image">Image Only</option>
+          <option value="video">Video Only</option>
+        </select>
 
-      <button @click="selectFolder" class="btn btn-secondary">📂 Browse</button>
-      <select v-model="scanMode" id="scanMode" class="custom-select">
-        <option value="all">All Media</option>
-        <option value="image">Image Only</option>
-        <option value="video">Video Only</option>
-      </select>
 
-      <button @click="startScan" :disabled="isScanning || !folderPath" class="btn btn-primary">
-        {{ isScanning ? 'Indexing Data...' : 'Start Indexing' }}
-      </button>
+        <div class="ocr-controls">
+          <label class="ocr-toggle">
+            <input type="checkbox" v-model="enableOcr" /> 🔠 OCR
+          </label>
+          <input v-if="enableOcr" v-model="ocrLanguages" type="text" placeholder="e.g. en, ch_sim, ja" class="custom-input ocr-lang-input" />
+        </div>
+        <button @click="startScan" :disabled="isScanning || !folderPath" class="btn btn-primary">
+          {{ isScanning ? 'Indexing Data...' : 'Start Indexing' }}
+        </button>
 
-      <button @click="toggleClustering" class="btn btn-cluster" title="Group visually similar images">
-        {{ isClusteringView ? '🖼️ Standard View' : '🧩 Visual Clusters' }}
-      </button>
+        <button @click="selectAndIndexFiles" class="btn btn-secondary" title="Select specific files to index">
+          📤 Index Files
+        </button>
 
-      <button @click="cleanGhosts" class="btn btn-danger" title="Remove physically deleted records">🧹 Purge Ghosts</button>
+        <button @click="toggleClustering" class="btn btn-cluster" title="Group visually similar images">
+          {{ isClusteringView ? '🖼️ Standard View' : '🧩 Visual Clusters' }}
+        </button>
+
+        <button @click="cleanGhosts" class="btn btn-danger" title="Remove physically deleted records">🧹 Purge Ghosts</button>
+      </div>
     </div>
 
     <div v-if="smartFolders.length > 0" class="smart-folders-bar">
       <span class="smart-folder-label">⭐ Smart Folders:</span>
       <div v-for="sf in smartFolders" :key="sf.id" class="smart-folder-pill" @click="applySmartFolder(sf)">
         <span class="sf-name">📁 {{ sf.name }}</span>
+        <!-- 🌟 Dynamic Match Count Badge from Backend -->
+        <span class="sf-count-badge">
+        (Num: {{ sf.match_count === 0 && sf.use_vector ? '?' : sf.match_count }} )
+        </span>
         <span class="sf-delete" @click.stop="removeSmartFolder(sf.id)">✕</span>
       </div>
     </div>
@@ -327,7 +345,7 @@
 
       <!-- Results Area -->
       <div class="results-grid">
-        <div v-for="(item, index) in results" :key="index" class="result-card">
+        <div v-for="(item, _index) in results" :key="item.path" class="result-card">
 
           <div v-if="item.isMissing" class="missing-card">
             <span class="missing-icon">👻</span>
@@ -356,6 +374,17 @@
                 <p class="ocr-label">🔍 Extracted Text:</p>
                 <p class="ocr-content" :class="{ 'ocr-collapsed': !item.expandOcr }" v-html="highlight(item.ocr_text)"></p>
                 <button v-if="item.ocr_text.length > 50" @click="item.expandOcr = !item.expandOcr" class="btn-text">{{ item.expandOcr ? 'Collapse 🔼' : 'Expand 🔽' }}</button>
+              </div>
+              <div class="ocr-run-panel" v-if="!item.ocr_text">
+                <button @click="runOcrForItem(item)" :disabled="item.ocrRunning" class="btn btn-sm btn-outline-primary">
+                  {{ item.ocrRunning ? '⏳ Running...' : '💬 Run OCR' }}
+                </button>
+                <input
+                  v-model="item.ocrLangInput"
+                  type="text"
+                  placeholder="lang (e.g. en, ch_sim)"
+                  class="ocr-lang-input-sm"
+                />
               </div>
               <div class="note-panel">
                 <p class="note-label">📝 Personal Note (Markdown):</p>
@@ -464,6 +493,8 @@ interface SearchResult {
   isMissing?: boolean   // optional property
   expandOcr?: boolean   // optional property
   collapsedLowScore?: boolean   // optional property
+  ocrRunning?: boolean
+  ocrLangInput?: string
 }
 
 interface ClusterGroup {
@@ -479,6 +510,7 @@ interface SmartFolder {
   use_ocr: boolean
   use_note: boolean
   use_filename: boolean
+  match_count: number   // 🌟 Dynamic match count from Rust backend
 }
 
 const engineReady = ref(false)
@@ -539,6 +571,8 @@ const activateSuccess = ref(false)
 
 const isShowAllMode = ref(false)
 
+const enableOcr = ref(false)
+const ocrLanguages = ref('en')   // Default to English; user can specify multiple languages like "en, ch_sim, ja"
 
 
 
@@ -621,13 +655,41 @@ async function removeSmartFolder(id: number) {
   await loadSmartFolders();
 }
 
-function applySmartFolder(sf: SmartFolder) {
-  searchQuery.value = sf.query_text;
-  s_vector.value = sf.use_vector;
-  s_ocr.value = sf.use_ocr;
-  s_note.value = sf.use_note;
-  s_filename.value = sf.use_filename;
-  resetAndSearch();
+async function applySmartFolder(sf: SmartFolder) {
+  // Synchronize UI filter toggles with folder definition
+  searchQuery.value = sf.query_text
+  s_vector.value = sf.use_vector
+  s_ocr.value = sf.use_ocr
+  s_note.value = sf.use_note
+  s_filename.value = sf.use_filename
+
+  isImageSearch.value = false
+  isClusteringView.value = false
+  currentPage.value = 1
+  jumpPage.value = 1
+  searchMsg.value = ''
+
+  try {
+    // 🌟 Execute query natively via Rust backend engine
+    const response: any = await invoke('execute_smart_folder', {
+      id: sf.id,
+      page: currentPage.value,
+      limit: pageSize.value
+    })
+
+    results.value = response.items.map((item: any) => ({
+      ...item,
+      isMissing: false,
+      expandOcr: false,
+      ocrLangInput: '',
+      ocr_text: item.ocr_text || '',
+      ocrRunning: false
+    }))
+
+    totalResults.value = response.total_count
+  } catch (err) {
+    searchMsg.value = `⚠️ Smart Folder execution failed: ${err}`
+  }
 }
 
 function getAssetUrl(path: string) { return convertFileSrc(path) }
@@ -699,7 +761,10 @@ function highlight(text: string) {
 
 onMounted(async () => {
   // ---- 1. Restore basic state ----
-  folderPath.value = localStorage.getItem('framescout_folder_path') || ''
+  // folderPath.value = localStorage.getItem('framescout_folder_path') || ''
+
+  localStorage.removeItem('framescout_smart_folders');
+  localStorage.removeItem('framescout_folder_path');
 
   // ---- 2. Register keyboard event listener ----
   document.addEventListener('keydown', handleKeydown)
@@ -789,12 +854,9 @@ onUnmounted(() => {
 })
 
 
-
-function savePath() { localStorage.setItem('framescout_folder_path', folderPath.value) }
-
 async function selectFolder() {
   const selected = await open({ directory: true });
-  if (selected) { folderPath.value = selected as string; savePath(); }
+  if (selected) { folderPath.value = selected as string; }
 }
 
 async function startScan() {
@@ -805,7 +867,12 @@ async function startScan() {
   if (!folderPath.value) return;
   isScanning.value = true; scanMsg.value = 'Extracting high-dimensional features...'
   try {
-    const count: number = await invoke('scan_folder', { folderPath: folderPath.value, scanMode: scanMode.value });
+    const count: number = await invoke('scan_folder', {
+      folderPath: folderPath.value,
+      scanMode: scanMode.value,
+      enableOcr: enableOcr.value,
+      ocrLanguages: ocrLanguages.value.split(',').map(l => l.trim()).filter(Boolean)
+    })
     if (count === 0) {
       scanMsg.value = `✅ Scan completed! No new files found. Memory Matrix is up to date.`;
     } else {
@@ -813,7 +880,12 @@ async function startScan() {
     }
   }
   catch (err) { scanMsg.value = `❌ Failed: ${err}` }
-  finally { isScanning.value = false }
+  finally {
+  isScanning.value = false
+    if (!searchQuery.value && !isImageSearch.value && !isClusteringView.value) {
+      await loadBrowsePage(currentPage.value)
+    }
+  }
 }
 
 async function toggleClustering() {
@@ -972,6 +1044,9 @@ async function performSearch() {
     res.forEach((item: any) => {
       item.isMissing = false;
       item.expandOcr = false;
+      item.ocrLangInput = '';
+      item.ocr_text = item.ocr_text || '';
+      item.ocrRunning = false;
 
       if (isVideo(item.path)) {
         const timerId = window.setTimeout(() => {
@@ -1036,6 +1111,62 @@ function exitShowAllMode() {
   currentPage.value = 1;
   jumpPage.value = 1;
   loadBrowsePage(1);
+}
+
+async function selectAndIndexFiles() {
+  const selected = await open({
+    multiple: true,
+    filters: [
+      { name: 'Media', extensions: ['jpg','jpeg','png','webp','mp4','mov','avi','mkv','webm','flv'] }
+    ]
+  })
+  if (!selected || selected.length === 0) return
+
+  isScanning.value = true
+  scanMsg.value = `Indexing ${selected.length} files...`
+  try {
+    const count: number = await invoke('index_files', {
+      filePaths: selected,
+      enableOcr: enableOcr.value,
+      ocrLanguages: ocrLanguages.value.split(',').map(l => l.trim()).filter(Boolean)
+    })
+    scanMsg.value = `✅ Indexed ${count} new files.`
+    if (!searchQuery.value && !isImageSearch.value && !isClusteringView.value) {
+      await loadBrowsePage(currentPage.value)
+    }
+  } catch (err) {
+    scanMsg.value = `❌ Indexing failed: ${err}`
+  } finally {
+    isScanning.value = false
+  }
+}
+
+async function runOcrForItem(item: any) {
+  const langs = item.ocrLangInput
+    ? item.ocrLangInput.split(',').map((l: string) => l.trim()).filter(Boolean)
+    : ocrLanguages.value.split(',').map((l: string) => l.trim()).filter(Boolean)
+  if (langs.length === 0) {
+    alert('Please specify at least one language.')
+    return
+  }
+  item.ocrRunning = true;
+  try {
+    const updated: number = await invoke('run_ocr_for_selected_files', {
+      filePaths: [item.path],
+      languages: langs
+    })
+    if (updated > 0) {
+      // Temporarily update the item's ocr_text to reflect the change (actual text will be fetched on next search)
+      // item.ocr_text = '[OCR text updated. Refresh results to see the actual text.]'
+      alert(`✅ OCR updated for ${item.path}. Please refresh results to see changes.`)
+    } else {
+      alert('⚠️ No OCR update performed. The file may already have OCR text or the engine did not return results.')
+    }
+  } catch (err) {
+    alert(`OCR failed: ${err}`)
+  } finally {
+    item.ocrRunning = false;
+  }
 }
 
 </script>
@@ -1108,7 +1239,13 @@ body { margin: 0; background-color: #0a0a0c; font-family: -apple-system, BlinkMa
 .brand-header { text-align: center; font-size: 36px; font-weight: 800; background: var(--grad-purple-cyan); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 
 /* Common Button Group */
-.top-action-bar { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+/* .top-action-bar { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; } */
+.top-action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
 .btn { padding: 10px 18px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: all 0.2s ease; }
 .btn-primary { background: var(--grad-purple-cyan); color: #000; box-shadow: 0 0 10px rgba(103,229,229,0.3); }
 .btn-primary:hover { opacity: 0.95; transform: translateY(-1px); }
@@ -1120,7 +1257,17 @@ body { margin: 0; background-color: #0a0a0c; font-family: -apple-system, BlinkMa
 
 /* Input Fields */
 .custom-input { padding: 10px 15px; border-radius: 6px; border: 1px solid #333344; background: #121218; color: #fff; outline: none; }
-.path-input { width: 320px; }
+.path-input {
+  min-width: 280px;
+  max-width: 520px;
+  flex: 1 1 auto;
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #333344;
+  background: #121218;
+  color: #fff;
+  outline: none;
+}
 .custom-select { padding: 10px; background: #121218; color: #fff; border-radius: 6px; border: 1px solid #333344; }
 
 /* Monitor Bus */
@@ -1600,6 +1747,68 @@ button:disabled {
   color: #ccc;
   font-size: 14px;
   font-weight: 500;
+}
+
+.ocr-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ocr-toggle {
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.ocr-lang-input {
+  width: 140px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.ocr-run-panel {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+.ocr-lang-input-sm {
+  width: 130px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+.btn-outline-primary {
+  background: transparent;
+  border: 1px solid #007bff;
+  color: #007bff;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-outline-primary:hover {
+  background: #007bff;
+  color: white;
+}
+
+.bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .bar-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .bar-row > * {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 </style>

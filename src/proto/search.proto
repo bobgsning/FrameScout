@@ -4,40 +4,57 @@
 // Compile with: protoc --python_out=. search.proto (Python)
 // Compile with: prost-build in build.rs (Rust)
 //
-// Version: 3.0.2
+// Version: 3.0.3
 // Author: bobgsning
 
 syntax = "proto3";
 package framescout;
 
 // ============================================================
+// OcrConfig: Controls selective execution and multi-language support
+// ============================================================
+message OcrConfig {
+  bool enable_ocr = 1;              // If false, OCR step is completely skipped (Fast Vision Mode)
+  repeated string languages = 2;    // e.g., ["en"], ["ch_sim", "en"], ["ja", "en"]
+}
+
+// ============================================================
+// SingleOcrTask: Used for running on-demand OCR on existing indexed files
+// ============================================================
+message SingleOcrTask {
+  repeated string file_paths = 1;
+  repeated string languages = 2;
+}
+
+// ============================================================
 // Batch Request: multiple file paths for bulk processing
-// Used during folder scanning — Rust sends chunks of 4 paths at a time
 // ============================================================
 message BatchPaths {
   repeated string file_paths = 1;
+  OcrConfig ocr_config = 2;         // 🌟 Selective & Multi-language OCR configuration
 }
 
 // ============================================================
 // EncodeRequest: The main request message
-// Uses oneof to ensure exactly one payload type per request
 // ============================================================
 message EncodeRequest {
   string task_id = 1;
   
   oneof payload {
     // Single file path (image or video)
-    // Used for: single-file indexing, image-to-image search
     string file_path = 2;
     
     // Text query for semantic search
-    // Used for: natural language search ("sunset beach with friends")
     string text = 3;
     
     // Batch of file paths for bulk processing
-    // Used for: folder scanning with chunked processing
     BatchPaths batch = 4;
+
+    // 🌟 On-demand selective OCR processing for specific files
+    SingleOcrTask ocr_task = 5;
   }
+  
+  OcrConfig single_file_ocr_config = 6; // 🌟 Optional OCR config for single file processing
 }
 
 // ============================================================

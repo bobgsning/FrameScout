@@ -16,8 +16,7 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 📖 [Quick Start](#-quick-start-development) ·
 🤝 [Contributing](CONTRIBUTING.md)
 
-> 🆕 **v3.0.2 is here!** New files now appear first thanks to index-time sorting. Try the new **“Show All”** button for a complete overview. [See changelog](CHANGELOG.md#302---2026-08-09).
-
+> 🆕 **v3.0.3 is here!** Smart Folders are now fully persistent in the backend — no more lost rules after restart. On‑demand OCR for selected files with custom languages. Pure vector folders now show `?` badges for honest counting. [See changelog](CHANGELOG.md#303---2026-08-10).
 > **Just want to try it?** Download the latest Windows executable from the [https://github.com/bobgsning/FrameScout/releases](https://github.com/bobgsning/FrameScout/releases) — no installation required. Unzip and run.
 
 ---
@@ -34,7 +33,7 @@ FrameScout offers a **third way**: AI-powered search that runs entirely on your 
 
 ---
 
-## 🛠️ Known Limitations (v3.0.2)
+## 🛠️ Known Limitations (v3.0.3)
 
 We believe in transparency. Here's what FrameScout *doesn’t* do yet:
 
@@ -46,6 +45,8 @@ We believe in transparency. Here's what FrameScout *doesn’t* do yet:
 | No filesystem real-time monitoring | Manual re-scan; inotify/watchdog planned |
 | No LLM-generated captions | Deliberate — would require network access |
 | “Show All” mode may lag with >10K files | Virtual scrolling planned for v3.1 |
+| Smart Folder match count for pure vector searches shows `?` | Future: add approximate vector count. |
+| OCR on-demand is per-file only | Batch OCR for multiple files planned for v3.1 |
 
 ---
 
@@ -56,11 +57,11 @@ We believe in transparency. Here's what FrameScout *doesn’t* do yet:
 | 🔒 **100% Offline** | No internet required. Models are bundled locally. Your data never leaves your computer. |
 | 💡 **Semantic Search (ONNX + SigLIP 2)** | Type words and find matching images by meaning, not just filenames. |
 | 🖼️ **Image-to-Image Search** | Drop a reference image to find visually similar ones in your library. |
-| 🔍 **OCR Text Search** | Extracts and indexes text from images. Like searching *"receipt from March"* and find it instantly. |
+| 🔍 **OCR Text Search** | Extracts and indexes text from images. Like searching *"receipt from March"* and find it instantly. Supports on‑demand OCR on selected files with custom languages. |
 | 📋 **Show All Mode** | Load every indexed file. New files are sorted by intake time and always appear at the top. |
 | 🎬 **Video Frame Indexing** | Automatically extracts key frames from videos and indexes them alongside static images. |
 | 🧩 **Visual Clustering** | Discover groups of similar images (duplicates, near-duplicates, burst shots) with one click. |
-| 📁 **Smart Folders** | Save any search as a dynamic folder that updates automatically when new files are added. |
+| 📁 **Smart Folders** | Save any search as a dynamic folder that updates automatically when new files are added. Rules are stored in the database and survive app restarts. |
 | 📝 **Personal Notes** | Attach markdown notes to any image. Notes are searchable. Next time you’ll find it more effortlessly. |
 
 ### 🎬 Video Frame Semantic Search with Instant Seek
@@ -278,6 +279,7 @@ Now `npm run tauri dev` will automatically start the compiled worker.
 - [x] Index-time sorting (new files always appear first)
 - [x] “Show All” mode (flat listing without pagination)
 - [x] RwLock optimization (non-blocking search during scan)
+- [ ] Enhance smart folders and other user experiences
 - [ ] Hover tooltips with file metadata
 - [ ] Per-image delete (not just bulk ghost purge)
 - [ ] Video timeout reduced to 10s + loading animation
@@ -285,7 +287,6 @@ Now `npm run tauri dev` will automatically start the compiled worker.
 ### v3.1 (Cross-Platform & UX)
 
 - [ ] Folder tree sidebar view
-- [ ] Enhance smart folders and other user experiences
 - [ ] Multiple view modes (grid / list / timeline)
 - [ ] Export/Import database (SQLite backup)
 - [ ] Data timeline (visualize your indexing history)
