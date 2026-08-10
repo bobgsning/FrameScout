@@ -17,6 +17,9 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 🤝 [Contributing](CONTRIBUTING.md)
 
 > 🆕 **v3.0.3 is here!** Smart Folders are now fully persistent in the backend — no more lost rules after restart. On‑demand OCR for selected files with custom languages. Pure vector folders now show `?` badges for honest counting. [See changelog](CHANGELOG.md#303---2026-08-10).
+
+---
+
 > **Just want to try it?** Download the latest Windows executable from the [https://github.com/bobgsning/FrameScout/releases](https://github.com/bobgsning/FrameScout/releases) — no installation required. Unzip and run.
 
 ---
