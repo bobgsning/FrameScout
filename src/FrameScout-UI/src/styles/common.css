@@ -1,0 +1,274 @@
+/* ============================================================
+   Shared / base styles
+   只放「被 2 个以上组件共用」或「全局生效」的样式。
+   组件独有样式请放在各自 <style scoped> 中。
+   ============================================================ */
+
+body {
+  margin: 0;
+  background-color: #0a0a0c;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.app-container {
+  padding: 40px;
+  color: #fff;
+  min-height: 100vh;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  padding: 10px 18px;
+  border-radius: 6px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-primary {
+  background: var(--grad-purple-cyan);
+  color: #000;
+  box-shadow: 0 0 10px rgba(103, 229, 229, 0.3);
+}
+.btn-primary:hover { opacity: 0.95; transform: translateY(-1px); }
+.btn-secondary {
+  background: #1e1e26;
+  color: #fff;
+  border: 1px solid #333344;
+}
+.btn-cluster { background: var(--grad-amber-orange); color: #000; }
+.btn-danger { background: #ff3344; color: #fff; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* 蓝图描边按钮：搜索栏「🖼️ Similar」「📋 All Files」与卡片「💬 Run OCR」共用 */
+.btn-outline-primary {
+  background: transparent;
+  border: 1px solid #007bff;
+  color: #007bff;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-outline-primary:hover {
+  background: #007bff;
+  color: white;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+
+/* ---------- Form controls ---------- */
+.custom-input {
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #333344;
+  background: #121218;
+  color: #fff;
+  outline: none;
+}
+.custom-select {
+  padding: 10px;
+  background: #121218;
+  color: #fff;
+  border-radius: 6px;
+  border: 1px solid #333344;
+}
+/* 每页条数下拉（原实现引用了该类但未定义样式） */
+.custom-select-sm {
+  padding: 4px 6px;
+  background: #121218;
+  color: #fff;
+  border: 1px solid #333344;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.custom-textarea {
+  width: 100%;
+  height: 50px;
+  background: #121218;
+  color: #fff;
+  border: 1px solid #222233;
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 12px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+/* ---------- Result grid & card shell ---------- */
+.results-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+}
+.result-card {
+  background: #14141e;
+  padding: 15px;
+  border-radius: 10px;
+  width: 340px;
+  border: 1px solid #222233;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s;
+  padding-bottom: 16px;
+}
+.result-card:hover {
+  transform: translateY(-3px);
+  border-color: #8333ff;
+}
+.media-preview {
+  width: 100%;
+  height: 200px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #000;
+}
+.card-content {
+  margin-top: 10px;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+}
+.file-path {
+  font-size: 12px;
+  color: #888;
+  word-break: break-all;
+  margin: 0 0 10px 0;
+}
+.card-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.match-score {
+  font-size: 14px;
+  font-weight: bold;
+  background: var(--grad-yellow-orange);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.badge-timestamp {
+  font-size: 12px;
+  color: #2fe9e9;
+  margin: 0;
+}
+
+/* ---------- Tag group ---------- */
+.tags-wrapper {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.tag-badge {
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(34, 126, 195, 0.2);
+  color: #2fe9e9;
+  border: 1px solid rgba(47, 233, 233, 0.3);
+}
+.semantic-tag {
+  background: rgba(131, 51, 255, 0.2);
+  color: #67e5e5;
+  border-color: #8333ff;
+}
+.low-tag {
+  background: rgba(255, 255, 255, 0.05);
+  color: #666;
+  border-color: #333;
+}
+
+/* 通过 v-html 注入，必须保持全局作用域（scoped 会匹配不到） */
+.highlight-text {
+  background: var(--grad-yellow-orange);
+  color: #000;
+  font-weight: bold;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* ---------- Panels inside cards ---------- */
+.ocr-panel,
+.note-panel {
+  margin-top: 10px;
+  background: #0a0a0e;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #1a1a24;
+}
+.ocr-label,
+.note-label {
+  font-size: 11px;
+  color: #666;
+  margin: 0 0 4px 0;
+}
+.ocr-content {
+  font-size: 12px;
+  color: #ccc;
+  margin: 0;
+  line-height: 1.4;
+}
+.ocr-collapsed {
+  max-height: 38px;
+  overflow: hidden;
+}
+
+.ocr-run-panel {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+.ocr-lang-input-sm {
+  width: 130px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* 文字型按钮：OCR 展开/折叠（原实现引用但未定义样式） */
+.btn-text {
+  background: none;
+  border: none;
+  color: #67e5e5;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 0 0 0;
+}
+.btn-text:hover { color: #2fe9e9; text-decoration: underline; }
+
+/* ---------- Missing file ---------- */
+.missing-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  background: #1a1a24;
+  border-radius: 6px;
+  color: #666;
+  font-size: 16px;
+  gap: 10px;
+  flex-direction: column;
+}
+.missing-icon { font-size: 40px; opacity: 0.5; }
+
+/* ---------- Error message ---------- */
+.error-msg {
+  color: #ff4444;
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+  margin-top: 10px;
+}

@@ -1,0 +1,14 @@
+{
+  "typeCheckingMode": "standard",
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["."],
+  "reportImplicitRelativeImport": false,
+  "exclude": [
+    "**/dist",
+    "**/build",
+    "**/models",
+    "**/target",
+    "**/__pycache__"
+  ]
+}

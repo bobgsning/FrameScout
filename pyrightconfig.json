@@ -1,0 +1,17 @@
+{
+  "//": "工作区根级类型检查配置。inference-worker 子目录自带 pyrightconfig.json，当编辑器以子目录为根打开时由其生效；当 LSP 以工作区根为作用域时由此文件生效。两者保持一致。",
+  "typeCheckingMode": "standard",
+  "venvPath": "src/inference-worker",
+  "venv": ".venv",
+  "extraPaths": ["src/inference-worker"],
+  "reportImplicitRelativeImport": false,
+  "exclude": [
+    "**/dist",
+    "**/build",
+    "**/models",
+    "**/target",
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv"
+  ]
+}

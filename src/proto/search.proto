@@ -1,0 +1,105 @@
+// FrameScout Inter-Process Communication Protocol
+// Defines the wire format between Rust/Tauri core and Python inference worker.
+//
+// Compile with: protoc --python_out=. search.proto (Python)
+// Compile with: prost-build in build.rs (Rust)
+//
+// Version: 3.1.0
+// Author: bobgsning
+
+syntax = "proto3";
+package framescout;
+
+// ============================================================
+// OcrConfig: Controls selective execution and multi-language support
+// ============================================================
+message OcrConfig {
+  bool enable_ocr = 1;              // If false, OCR step is completely skipped (Fast Vision Mode)
+  repeated string languages = 2;    // e.g., ["en"], ["ch_sim", "en"], ["ja", "en"]
+}
+
+// ============================================================
+// SingleOcrTask: Used for running on-demand OCR on existing indexed files
+// ============================================================
+message SingleOcrTask {
+  repeated string file_paths = 1;
+  repeated string languages = 2;
+}
+
+// ============================================================
+// Batch Request: multiple file paths for bulk processing
+// ============================================================
+message BatchPaths {
+  repeated string file_paths = 1;
+  OcrConfig ocr_config = 2;         // 🌟 Selective & Multi-language OCR configuration
+}
+
+// ============================================================
+// EncodeRequest: The main request message
+// ============================================================
+message EncodeRequest {
+  string task_id = 1;
+  
+  oneof payload {
+    // Single file path (image or video)
+    string file_path = 2;
+    
+    // Text query for semantic search
+    string text = 3;
+    
+    // Batch of file paths for bulk processing
+    BatchPaths batch = 4;
+
+    // 🌟 On-demand selective OCR processing for specific files
+    SingleOcrTask ocr_task = 5;
+  }
+  
+  // OCR 配置配对规则（与上方 oneof payload 协同）：
+  //   - `file_path` 载荷（单文件编码）使用本字段 single_file_ocr_config；
+  //   - `batch`   载荷（批量编码）使用 BatchPaths.ocr_config。
+  // 两者由各自对应的载荷决定本次请求是否启用、以及以何种语言执行 OCR。
+  OcrConfig single_file_ocr_config = 6;
+}
+
+// ============================================================
+// ErrorInfo: Structured error response
+// ============================================================
+message ErrorInfo {
+  int32 code = 1;            // HTTP-style error code (500 = internal, 400 = bad request)
+  string message = 2;        // Human-readable error description
+  string context = 3;        // Error context ("ai_inference", "file_read", etc.)
+}
+
+// ============================================================
+// FrameResult: A single indexed media item
+// For images: timestamp = 0.0
+// For videos: timestamp = seconds from start of video
+// ============================================================
+message FrameResult {
+  float timestamp = 1;           // Seconds into video (0.0 for images)
+  repeated float vector = 2;     // 768-dimensional SigLIP 2 embedding
+  string ocr_text = 3;           // Extracted text from EasyOCR
+  string file_path = 4;          // Absolute path to source file
+  double index_time = 5;         // 🌟 Storage Time (Unix Timestamp, seconds)
+}
+
+// ============================================================
+// SuccessPayload: Contains one or more FrameResults
+// Even single-image requests return an array (for consistency)
+// ============================================================
+message SuccessPayload {
+  repeated FrameResult frames = 1;
+}
+
+// ============================================================
+// EncodeResponse: The main response message
+// Uses oneof to ensure exactly one result type per response
+// ============================================================
+message EncodeResponse {
+  string task_id = 1;
+  
+  oneof result {
+    SuccessPayload success = 2;
+    ErrorInfo error = 3;
+  }
+}

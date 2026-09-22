@@ -1,0 +1,45 @@
+/* ============================================================
+   Brand design tokens
+   - 7 大品牌渐变
+   - 模态框 Pro / Trial 双主题变量
+   ============================================================ */
+
+:root {
+  --grad-purple-cyan: linear-gradient(135deg, #8333ff, #67e5e5);
+  --grad-purple-blue: linear-gradient(135deg, #821fc6, #2493db);
+  --grad-blue-cyan: linear-gradient(135deg, #227ec3, #2fe9e9);
+  --grad-champagne: linear-gradient(135deg, #e7eec3, #c3e6ee);
+  --grad-gold-yellow: linear-gradient(135deg, #e5a800, #ebff1a);
+  --grad-amber-orange: linear-gradient(135deg, #ffee82, #ff8000);
+  --grad-yellow-orange: linear-gradient(135deg, #f9f922, #ff6619);
+
+  /* Modal theme variables (Pro default) */
+  --modal-border-color: #8333ff;
+  --modal-shadow: 0 0 30px rgba(131, 51, 255, 0.3), 0 0 60px rgba(103, 229, 229, 0.1);
+  --modal-title-gradient: var(--grad-purple-cyan);
+  --modal-btn-primary-bg: var(--grad-purple-cyan);
+  --modal-btn-primary-shadow: 0 0 10px rgba(103, 229, 229, 0.3);
+  --modal-input-focus-border: #8333ff;
+  --modal-input-focus-shadow: 0 0 8px rgba(131, 51, 255, 0.3);
+  --modal-success-bg: rgba(103, 229, 229, 0.12);
+  --modal-success-color: #67e5e5;
+  --modal-success-border: rgba(103, 229, 229, 0.3);
+
+  /* Error prompt variables (Pro default) */
+  --modal-error-bg: rgba(255, 68, 68, 0.12);
+  --modal-error-color: #ff4455;
+  --modal-error-border: rgba(255, 68, 68, 0.3);
+}
+
+.trial-theme {
+  --modal-border-color: #ffaa33;
+  --modal-shadow: 0 0 30px rgba(255, 170, 51, 0.3), 0 0 60px rgba(255, 136, 17, 0.1);
+  --modal-title-gradient: linear-gradient(135deg, #ffaa33, #ff6619);
+  --modal-btn-primary-bg: linear-gradient(135deg, #ffaa33, #ff6619);
+  --modal-btn-primary-shadow: 0 0 10px rgba(255, 166, 77, 0.3);
+  --modal-input-focus-border: #ffaa33;
+  --modal-input-focus-shadow: 0 0 8px rgba(255, 170, 51, 0.3);
+  --modal-success-bg: rgba(255, 204, 102, 0.12);
+  --modal-success-color: #ffaa33;
+  --modal-success-border: rgba(255, 204, 102, 0.3);
+}

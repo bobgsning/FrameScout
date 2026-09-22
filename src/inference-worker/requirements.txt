@@ -1,0 +1,27 @@
+# FrameScout Inference Worker Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core ML
+# ⚠️ 本项目为纯 Windows 发行版，固定使用 DirectML 包（NVIDIA/AMD/Intel GPU 通用，
+#    基于 DX12，无需用户安装 CUDA/cuDNN）。详见 utils/onnx_utils.py 模块注释。
+#    不要同时安装其他 onnxruntime 发行包（同模块名会互相覆盖、卸载时互删文件）：
+onnxruntime-directml>=1.24.4                             # Windows DirectML（当前唯一后端）
+# onnxruntime>=1.17.0                                    # 纯 CPU（如需回退再用）
+# onnxruntime-gpu>=1.17.0                                 # NVIDIA CUDA（需另配 CUDA/cuDNN）
+
+transformers>=4.37.0
+Pillow>=10.0.0
+numpy>=1.26.0
+
+# OCR
+easyocr>=1.7.0
+
+# Computer Vision (headless)
+opencv-python-headless>=4.8.0
+
+# IPC
+pyzmq>=25.0.0
+protobuf>=4.25.0
+
+# Optional: PyTorch (only needed if you plan to run original CLIP or debug)
+# torch>=2.0.0
