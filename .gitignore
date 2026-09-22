@@ -40,6 +40,7 @@ Thumbs.db
 # Model files (downloaded separately via scripts/download_models.py)
 src/inference-worker/models/
 models/
+!src/FrameScout-UI/src-tauri/src/models/
 
 # Database files (user data)
 *.db
