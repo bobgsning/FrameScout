@@ -12,6 +12,10 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 export default defineConfig({
   plugins: [vue()],
 
+  // Tauri 必需：相对路径 base。默认 '/' 会让构建产物里的 /assets/*.js 成为绝对路径，
+  // 在 tauri://localhost 协议下加载失败 → release 黑屏（dev 走 devUrl 所以正常）。
+  base: './',
+
   // 注入应用版本号（从 package.json 读取），供设置页等处使用
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version)
@@ -48,7 +52,11 @@ export default defineConfig({
 
   // 构建配置
   build: {
-    target: 'esnext',
+    // 关键：不能用 'esnext'！那会让产物保留最新 ES 语法、不做降级，
+    // Windows 的 WebView2 内核版本可能不兼容 → JS 解析失败 → release 黑屏。
+    // Tauri 官方推荐 Windows 用 chrome105（macOS/Linux 用 safari13）。
+    target: process.env.TAURI_ENV_PLATFORM == 'windows' ? 'chrome105' : 'safari13',
+    minify: !process.env.TAURI_ENV_DEBUG,
     sourcemap: !!process.env.TAURI_ENV_DEBUG
   }
 })

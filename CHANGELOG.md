@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [3.2.0] - 2026-10-08
 
+### 首次开源发布收尾 (Batch 32 · 发布修复与文档核查)
+
+1. **修复 release 构建黑屏**：`tauri.conf.json` 的 CSP `script-src` 缺 `'unsafe-eval'`，
+   而 vue-i18n 运行时编译翻译消息用到 `new Function()`，release 下被 CSP 拦截抛出
+   `EvalError`，导致前端整体崩溃、界面纯黑；现于 `script-src` 加入 `'unsafe-eval'`
+   （离线桌面应用，eval 仅来自可信的 vue-i18n）。
+2. **vite 构建目标降级**：`build.target` 由 `esnext` 改为 `chrome105`（Windows）/
+   `safari13`（其他平台），避免产物使用 WebView2 内核不兼容的最新 ES 语法（Tauri 官方推荐）。
+3. **资源路径改为相对**：`base: './'`，release 下 `tauri://localhost` 稳定加载 `assets/*`
+   （此前绝对路径在 dev 正常、release 存在解析风险）。
+4. **bundle identifier 修正**：`com.framescout.app` → `com.framescout.desktop`，
+   消除「identifier 以 `.app` 结尾与 macOS bundle 扩展冲突」的构建警告。
+5. **根 README 重写（中英双语）**：修正过时事实（RapidOCR / 版本号 / 仓库结构 / 混合评分
+   归属前端），按「诚实但克制」扩充「已知限制」、路线图按真实完成度标注，中英严格同步。
+6. **品牌统一为 Global Edition**：完整功能版、发布于社区，故将「Community Edition / 社区版」
+   统一为「Global Edition / 全球版」。
+7. **LICENSE 替换为完整 Apache 2.0 全文**（保留 `Copyright 2026 AetherFlow Labs Inc.`），
+   使 GitHub 能正确识别许可证。
+8. **文档合并 / 更名 / 清理**：删除过时的 `README_AI.md`、`落地说明.md` 并入前端 README、
+   `RAPIDOCR_MULTILANG.md` 更名改写为 `OCR_MULTILANG.md`、更新 `TREE.md` 与各子目录 README。
+9. **.gitignore 增补**：排除 Nuitka 崩溃报告（`nuitka-crash-report.xml`）、`.codebuddy/`、
+   Pro 签发工具链（`developer_public_key.pem` / `license_gen.py`），仅保留公开仓库应公开内容。
+
 ### 第五轮 UI 微调 (Batch 31 · 布局与快捷入口)
 
 1. **搜索框缩短**：搜索输入框最大宽度由 480px 收敛到 450px，避免在窄窗口下把右侧
