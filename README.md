@@ -352,7 +352,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
-FrameScout core is licensed under **Apache License 2.0**. See [LICENSE](LICENSE) for details.
+FrameScout core is licensed under **Apache License 2.0**. See [LICENSE](LICENSE) for details. Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 © 2026 AetherFlow Labs Inc.
 

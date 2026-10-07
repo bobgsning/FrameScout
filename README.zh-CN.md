@@ -350,7 +350,7 @@ FrameScout 基于 Apache 2.0 开源。核心架构、算法与通信协议完全
 
 ## 📄 许可证
 
-FrameScout 核心基于 **Apache License 2.0** 授权。详见 [LICENSE](LICENSE)。
+FrameScout 核心基于 **Apache License 2.0** 授权。详见 [LICENSE](LICENSE)。第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 © 2026 AetherFlow Labs Inc.
 
