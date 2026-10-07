@@ -7,7 +7,7 @@
 
 ## *100% 私有、完全离线、多模态桌面搜索引擎*
 
-**用自然语言、OCR 文字或视觉相似度搜索你本地的图片与视频——无云端、无遥测、无账号。免费且开源（社区版）。**
+**用自然语言、OCR 文字或视觉相似度搜索你本地的图片与视频——无云端、无遥测、无账号。免费且开源（全球版）。**
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](https://www.microsoft.com/windows)
@@ -241,7 +241,7 @@ pip install -r requirements.txt
 # 3. 下载 SigLIP 2 + BGE-M3 模型（一次性，总计约 1.5GB）（在 src/inference-worker 下执行）
 python ../../scripts/download_models.py
 
-# 4. 构建并运行（社区版）
+# 4. 构建并运行（全球版）
 # 回到前端目录进行构建
 cd ../FrameScout-UI
 npm run tauri dev          # 开发模式

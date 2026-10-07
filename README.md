@@ -7,7 +7,7 @@
 
 ## *100% Private, Fully Offline, Multi-Modal Desktop Search Engine*
 
-**Search your local images and videos with natural language, OCR text, or visual similarity — no cloud, no telemetry, no accounts. Free & open source (Community Edition).**
+**Search your local images and videos with natural language, OCR text, or visual similarity — no cloud, no telemetry, no accounts. Free & open source (Global Edition).**
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](https://www.microsoft.com/windows)
@@ -241,7 +241,7 @@ pip install -r requirements.txt
 # 3. Download SigLIP 2 + BGE-M3 models (one-time, ~1.5GB total) (from src/inference-worker)
 python ../../scripts/download_models.py
 
-# 4. Build and run (Community Edition)
+# 4. Build and run (Global Edition)
 # Return to frontend directory for building
 cd ../FrameScout-UI
 npm run tauri dev          # Development mode
