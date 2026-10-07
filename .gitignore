@@ -21,10 +21,12 @@ node_modules/
 dist/
 .vite/
 *.local
+dist_nuitka/
 
 # ========== IDE ==========
 .vscode/
 .idea/
+.codebuddy/
 *.swp
 *.swo
 *~
@@ -36,6 +38,9 @@ Thumbs.db
 # ========== FrameScout specific ==========
 # Debug logs (generated in temp directory)
 *.log
+
+# Nuitka crash reports (generated on failed builds)
+src/inference-worker/nuitka-crash-report.xml
 
 # Model files (downloaded separately via scripts/download_models.py)
 src/inference-worker/models/
@@ -64,11 +69,15 @@ gen/
 src/FrameScout-UI/src-tauri/bin/
 
 # ========== Secrets ==========
-# Developer signing key for Pro licenses — NEVER commit the private key.
-# It is generated locally by scripts/license_gen.py (or inference-worker/license_gen.py)
-# and must stay out of version control. Rotate the keypair if it was ever committed.
+# Pro-license signing toolchain — do NOT commit. The keypair is generated locally
+# and must stay out of version control. Runtime license verification uses a
+# hardcoded public key in the Rust source, so none of these files are needed to
+# build or run. Rotate the keypair if it was ever committed.
 src/inference-worker/developer_private_key.pem
+src/inference-worker/developer_public_key.pem
+src/inference-worker/license_gen.py
 
 # ========== Notes ==========
 src/inference-worker/Notes.txt
 src/inference-worker/打包.txt
+mydocs/

@@ -30,25 +30,25 @@ async function handleSubmit() {
     >
       <h2>
         {{ props.licenseStatus.is_pro ? '💎' : '⚡' }}
-        {{ props.licenseStatus.is_pro ? 'Your License - Pro' : 'Activate FrameScout Pro' }}
+        {{ props.licenseStatus.is_pro ? $t('header.licenseTitlePro') : $t('header.activatePro') }}
       </h2>
-      <p class="modal-sub">Enter your email and the License Key provided after purchase.</p>
+      <p class="modal-sub">{{ $t('header.activateHint') }}</p>
 
       <div class="form-group">
-        <label>Email Address</label>
+        <label>{{ $t('header.email') }}</label>
         <input
           v-model="licenseEmail"
           type="email"
-          placeholder="your@email.com"
+          :placeholder="$t('header.emailPlaceholder')"
           class="custom-input modal-input"
         />
       </div>
 
       <div class="form-group">
-        <label>License Key</label>
+        <label>{{ $t('header.licenseKey') }}</label>
         <textarea
           v-model="licenseKeyInput"
-          placeholder="Paste your Base64 License Key here..."
+          :placeholder="$t('header.licenseKeyPlaceholder')"
           class="custom-textarea modal-textarea"
         ></textarea>
       </div>
@@ -58,8 +58,8 @@ async function handleSubmit() {
       </p>
 
       <div class="modal-actions">
-        <button class="btn btn-secondary" @click="emit('close')">Cancel</button>
-        <button class="btn btn-primary" @click="handleSubmit">Activate License</button>
+        <button class="btn btn-secondary" @click="emit('close')">{{ $t('common.cancel') }}</button>
+        <button class="btn btn-primary" @click="handleSubmit">{{ $t('header.activateButton') }}</button>
       </div>
     </div>
   </div>

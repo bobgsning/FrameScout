@@ -9,6 +9,9 @@
     "core:window:allow-close",
     "core:webview:allow-internal-toggle-devtools",
     "dialog:allow-open",
-    "dialog:default"
+    "dialog:default",
+    "opener:default",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir"
   ]
 }

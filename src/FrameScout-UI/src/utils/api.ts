@@ -1,16 +1,26 @@
 /**
  * Thin wrappers around Tauri IPC commands that carry no UI state.
  * （有状态的业务流请走 composables/，这里只放「调一次就完事」的原子操作）
+ *
+ * P1-8 / P1-13 修复（第三轮）：
+ *   - 所有 alert() 改走 useToast；
+ *   - saveNote 加成功/失败反馈（不再静默丢数据）。
  */
 import { invoke } from '@tauri-apps/api/core'
 import type { SearchResult } from '@/types/search'
+import { useToast } from '@/composables/useToast'
+import { t } from '@/i18n'
 
-/** 保存用户 Markdown 笔记（失焦即存） */
-export async function saveNote(path: string, note: string): Promise<void> {
+/** 保存用户 Markdown 笔记（失焦即存）。P1-13：加成功/失败反馈。 */
+export async function saveNote(path: string, note: string, timestamp?: number): Promise<boolean> {
+  const { push, localizeError } = useToast()
   try {
-    await invoke('update_note', { path, note })
+    await invoke('update_note', { path, note, timestamp })
+    return true
   } catch (err) {
-    console.error('Note save failed', err)
+    const msg = localizeError(err, t('api.saveNoteFailed'))
+    push(msg, 'error')
+    return false
   }
 }
 
@@ -20,6 +30,7 @@ export async function saveNote(path: string, note: string): Promise<void> {
  * @param fallbackLangs 卡片未单独指定语言时，回退到扫描栏的全局语言设置
  */
 export async function runOcrForItem(item: SearchResult, fallbackLangs: string): Promise<void> {
+  const { push, localizeError } = useToast()
   const raw = item.ocrLangInput || fallbackLangs
   const langs = raw
     .split(',')
@@ -27,7 +38,7 @@ export async function runOcrForItem(item: SearchResult, fallbackLangs: string): 
     .filter(Boolean)
 
   if (langs.length === 0) {
-    alert('Please specify at least one language.')
+    push(t('api.ocrLangRequired'), 'warning')
     return
   }
 
@@ -39,14 +50,12 @@ export async function runOcrForItem(item: SearchResult, fallbackLangs: string): 
     })
 
     if (updated > 0) {
-      alert(`✅ OCR updated for ${item.path}. Please refresh results to see changes.`)
+      push(t('api.ocrUpdated', { path: item.path }), 'success')
     } else {
-      alert(
-        '⚠️ No OCR update performed. The file may already have OCR text or the engine did not return results.'
-      )
+      push(t('api.ocrNotUpdated'), 'warning')
     }
   } catch (err) {
-    alert(`OCR failed: ${err}`)
+    push(localizeError(err, t('api.ocrFailed')), 'error')
   } finally {
     item.ocrRunning = false
   }

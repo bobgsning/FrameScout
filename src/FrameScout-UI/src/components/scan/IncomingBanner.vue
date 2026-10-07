@@ -12,8 +12,7 @@ const emit = defineEmits<{
 <template>
   <div class="incoming-banner" @click="emit('accept')">
     <span class="banner-text">
-      📥 {{ props.count }} new {{ props.count === 1 ? 'image has' : 'images have' }} been indexed.
-      Click to view.
+      {{ $t('incoming.banner', { count: props.count }) }}
     </span>
     <span class="banner-close" @click.stop="emit('dismiss')">✕</span>
   </div>

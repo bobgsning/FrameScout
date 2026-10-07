@@ -7,7 +7,7 @@ src-tauri/src/
 ├── constants.rs              # 全局常量 (FREE_TRIAL_LIMIT, VECTOR_DIM)
 ├── proto.rs                  # Protocol Buffers 宏引入与映射
 │
-├── models/                   # 前后端数据传输对象 (DTO) 与 App 状态
+├── model_code/                   # 前后端数据传输对象 (DTO) 与 App 状态
 │   ├── mod.rs
 │   ├── state.rs              # AppState (全局共享状态)
 │   ├── search.rs             # SearchResult, PagedResponse
@@ -23,7 +23,12 @@ src-tauri/src/
 ├── storage/                  # 数据持久化与内存计算
 │   ├── mod.rs
 │   ├── vector_matrix.rs      # FlatVectorMatrix (连续内存 768D 向量点乘检索)
-│   └── db.rs                 # SQLite 初始化、WAL 配置、建表与冷启动载入
+│   ├── db.rs                 # SQLite 初始化、WAL 配置、建表、冷启动载入与事件裁剪
+│   ├── migrations.rs         # 版本化迁移链 (M001~M009，含 FTS5 / 索引)
+│   ├── journal.rs            # 账簿：观测 / 事件 / 批次 (files / file_events / batches)
+│   ├── path_util.rs          # 路径规范化 + path_key 大小写折叠
+│   ├── text_store.rs         # 纯文本条目读写 (FTS5 + LIKE 回退)
+│   └── ocr_store.rs          # media_ocr_entries 行级 OCR 写入
 │
 ├── services/                 # 外部服务与通信层
 │   ├── mod.rs
@@ -33,11 +38,19 @@ src-tauri/src/
 │
 └── commands/                 # Tauri 前端调用命令 (按业务拆分)
     ├── mod.rs                # 汇总并对外导出所有 Tauri Commands
-    ├── index_cmd.rs          # scan_folder, index_files
-    ├── search_cmd.rs         # search_images, search_by_image, ping_engine
+    ├── index_cmd.rs          # scan_folder, index_files, cancel_scan
+    ├── search_cmd.rs         # search_images, search_by_image, search_text, ping_engine
+    ├── search_unified_cmd.rs # search_unified (统一跨通道融合，已接入前端)
     ├── ocr_cmd.rs            # run_ocr_for_selected_files
-    ├── smart_folder_cmd.rs   # 智能文件夹增删改查与动态执行
-    ├── cluster_cmd.rs        # cluster_similar_images
-    ├── file_cmd.rs           # update_note, clean_ghosts, list_all_files, get_all_files
+    ├── smart_folder_cmd.rs   # 智能文件夹增删改查、重命名、计数刷新与动态执行
+    ├── cluster_cmd.rs        # cluster_similar_images (medoid + 随机采样 + 快照)
+    ├── file_cmd.rs           # update_note, list_all_files, get_all_files
+    ├── ghost_cmd.rs          # preview_ghosts, apply_ghost_action (含 NAS 守卫 + 级联删除)
+    ├── diff_cmd.rs           # scan_diff (差异报告)
+    ├── reindex_cmd.rs        # reindex_files
+    ├── report_cmd.rs         # list_scan_reports, list_timeline, last_year_today_count
+    ├── text_cmd.rs           # ingest_text_files (chunk_text 分块)
+    ├── backup_cmd.rs         # backup_database, verify_integrity, list_backups
+    ├── ffmpeg_cmd.rs         # probe_ffmpeg, cut_video_clip (backend ready; frontend wiring pending)
     └── license_cmd.rs        # activate_pro_license, get_license_status
 ```

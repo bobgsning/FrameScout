@@ -2,7 +2,7 @@
 
 use tauri::State;
 use crate::constants::FREE_TRIAL_LIMIT;
-use crate::models::AppState;
+use crate::model_code::AppState;
 
 #[cfg(feature = "pro")]
 use crate::license::verifier;

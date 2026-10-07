@@ -29,6 +29,13 @@ export function highlight(text: string, query: string, isImageSearch = false): s
   if (!text || !query || isImageSearch) return text || ''
 
   const safeText = escapeHtml(text)
-  const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi')
+  // P1-12：多词切分——按空白切词，逐词高亮（此前整串正则，搜「cat dog」什么都高亮不到）
+  const terms = query
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+    .map((t) => escapeRegExp(t))
+  if (terms.length === 0) return safeText
+  const regex = new RegExp(`(${terms.join('|')})`, 'gi')
   return safeText.replace(regex, '<span class="highlight-text">$1</span>')
 }

@@ -21,7 +21,9 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 📖 [Quick Start](#-quick-start-development) ·
 🤝 [Contributing](CONTRIBUTING.md)
 
-> 🆕 **v3.1.0 is here!** Smart Folders are now fully persistent in the backend — no more lost rules after restart. On‑demand OCR for selected files with custom languages. Pure vector folders now show `?` badges for honest counting. [See changelog](CHANGELOG.md#3-1-0-2026-09-23).
+> 🆕 **v3.2.0 is here!** A sweeping polish pass across the whole product: normalized hybrid scoring (semantic search no longer drowned out by filename matches), scene-detection video frame extraction, FTS5 fault-tolerant text search, lightbox preview with OCR hit red-boxes, right-click open/reveal/copy, drag-to-search, scan pause/cancel with ETA, multi-select + CSV/Markdown/JSON export, database backup, and a full data-consistency pass. [See changelog](CHANGELOG.md#320---2026-10-08).
+>
+> 🌐 **Bilingual interface**: full English & Simplified Chinese localization, English by default. Switch anytime in **Settings → Language**.
 
 ---
 
@@ -43,18 +45,23 @@ FrameScout offers a **third way**: AI-powered search that runs entirely on your 
 
 ## 🛠️ Known Limitations
 
-We believe in transparency. Here's what FrameScout *doesn’t* do yet:
+We believe in transparency. Here's what FrameScout *doesn't* do yet — and what we plan to do about it:
 
 | Limitation | Workaround / Future Plan |
 | ---------- | ------------------------ |
-| Windows 10/11 only (no macOS/Linux yet) | Cross-platform builds planned for future |
-| Video frame extraction uses fixed 1 FPS | Scene-detection based extraction planned |
+| Windows 10/11 only (no macOS/Linux yet) | Cross-platform builds planned |
 | FlatVector search is O(N·d) | Will migrate to Faiss/Annoy when N > 50K |
 | No filesystem real-time monitoring | Manual re-scan; inotify/watchdog planned |
 | No LLM-generated captions | Deliberate — would require network access |
-| “Show All” mode may lag with >10K files | Virtual scrolling planned |
-| Smart Folder match count for pure vector searches shows `?` | Future: add approximate vector count. |
-| OCR on-demand is per-file only | Batch OCR for multiple files planned for a future release |
+| OCR supports English & Simplified Chinese only | More languages planned (RapidOCR rec-model swap) |
+| OCR on-demand is per-file only | Batch OCR for multiple files planned |
+| PDF/DOCX ingestion not yet supported | Convert to .txt/.md first; text extraction planned |
+| Database backup is one-way (no in-app restore) | Restore by copying the .db back; in-app restore planned |
+| Smart folders save a single text query + channel toggles (no boolean/time/type/seed conditions yet) | Full condition editor planned |
+| FTS5 full-text search covers imported text entries only (not OCR / filenames / notes) | Expanding coverage planned |
+| No partition / batch / date-range search filter | Planned |
+| Relevance thresholds & video frame-extraction limits are fixed, not user-adjustable | Settings planned |
+| Score breakdown bars are approximate for literal channels | Exact per-channel scores planned |
 
 ---
 
@@ -65,12 +72,12 @@ We believe in transparency. Here's what FrameScout *doesn’t* do yet:
 | 🔒 **100% Offline** | No internet required. Models are bundled locally. Your data never leaves your computer. |
 | 💡 **Semantic Search (ONNX + SigLIP 2)** | Type words and find matching images by meaning, not just filenames. |
 | 🖼️ **Image-to-Image Search** | Drop a reference image to find visually similar ones in your library. |
-| 🔍 **OCR Text Search** | Extracts and indexes text from images. Like searching *"receipt from March"* and find it instantly. Supports on‑demand OCR on selected files with custom languages. |
+| 🔍 **OCR Text Search** | Extracts and indexes text from images (English & Simplified Chinese). Search *"receipt from March"* and find it instantly. Supports on-demand OCR on selected files. |
 | 📋 **Show All Mode** | Load every indexed file. New files are sorted by intake time and always appear at the top. |
-| 🎬 **Video Frame Indexing** | Automatically extracts key frames from videos and indexes them alongside static images. |
+| 🎬 **Video Frame Indexing** | Automatically extracts key frames from videos (scene detection) and indexes them alongside static images. |
 | 🧩 **Visual Clustering** | Discover groups of similar images (duplicates, near-duplicates, burst shots) with one click. |
-| 📁 **Smart Folders** | Save any search as a dynamic folder that updates automatically when new files are added. Rules are stored in the database and survive app restarts. |
-| 📝 **Personal Notes** | Attach markdown notes to any image. Notes are searchable. Next time you’ll find it more effortlessly. |
+| 📁 **Smart Folders** | Save a text search as a named, persistent folder that re-runs against your library whenever you open it. |
+| 📝 **Personal Notes** | Attach markdown notes to any image. Notes are searchable. Next time you'll find it more effortlessly. |
 
 ### 🎬 Video Frame Semantic Search with Instant Seek
 
@@ -78,8 +85,6 @@ FrameScout doesn't just find videos — it pinpoints the **exact timestamp**:
 
 - **Semantic Matching**: Search using natural language (e.g., *"sunset under the pier"* or *"code snippet on screen"*).
 - **One-Click Instant Seek**: Click any search result to jump directly to that exact second (`01:23:45`) in your video.
-
-> **New in v3.0.2**: Newly indexed files are sorted by their ingestion time, so the most recent additions always appear first in browse mode. Click the “📋 Show All” button to see every file at once.
 
 ---
 
@@ -89,16 +94,18 @@ FrameScout doesn't just find videos — it pinpoints the **exact timestamp**:
 FrameScout/
 ├── src/
 │   ├── FrameScout-UI/               # Vue 3 + Tauri desktop app (Rust core)
-│   ├── inference-worker/       # Python AI inference engine (ONNX + SigLIP 2 + EasyOCR)
-│   │   └── models/
-│   │       ├── siglip2-base/   # SigLIP 2 ONNX models (vision + text)
-│   │       └── easyocr/        # EasyOCR model storage (offline)
-│   ├── proto/                  # ZeroMQ communication schema (Protobuf)
-├── scripts/                    # Utility scripts (model download, etc.)
+│   ├── inference-worker/            # Python AI inference engine (ONNX + SigLIP 2 + RapidOCR)
+│   │   └── models/                  # Downloaded by scripts/download_models.py (git-ignored)
+│   │       ├── siglip2-base/        # SigLIP 2 ONNX models (vision + text)
+│   │       └── bge-m3/              # BGE-M3 text embeddings (optional)
+│   ├── proto/                       # ZeroMQ communication schema (Protobuf)
+├── scripts/                         # Utility scripts (model download, etc.)
 ├── README.md
 ├── CONTRIBUTING.md
 └── LICENSE
 ```
+
+> OCR (RapidOCR / PP-OCRv4) weights ship inside the `rapidocr_onnxruntime` wheel — nothing extra to download for English & Simplified Chinese.
 
 Full directory tree available in [TREE.md](./TREE.md).
 
@@ -130,10 +137,10 @@ FrameScout uses a **three-process architecture** for maximum performance, safety
 │  │ ONNX + SigLIP 2  (Text + Image Embeddings, 768D) │   │
 │  └──────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │ EasyOCR (Text Extraction, offline)               │   │
+│  │ RapidOCR (Text Extraction, offline)              │   │
 │  └──────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │ OpenCV (Video Frame Extraction, 1 FPS)           │   │
+│  │ OpenCV (Video Frame Extraction, scene-detection) │   │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -143,7 +150,7 @@ FrameScout uses a **three-process architecture** for maximum performance, safety
 | Decision | Reason |
 | -------- | ------ |
 | **Rust + Tauri** (not Electron) | Native webview, binary is ~10x smaller, memory footprint is a fraction of Electron |
-| **Python worker** (not all-Rust) | SigLIP 2 and EasyOCR have mature Python ecosystems; no need to reinvent the wheel |
+| **Python worker** (not all-Rust) | SigLIP 2 and RapidOCR have mature Python ecosystems; no need to reinvent the wheel |
 | **ONNX Runtime** (not PyTorch) | Universal GPU acceleration (NVIDIA CUDA, AMD DirectML, Intel, CPU fallback); smaller footprint |
 | **ZeroMQ + Protobuf** (not HTTP) | Microsecond latency, type-safe schema, works fully offline |
 | **FlatVector matrix** (not Faiss) | For N < 50,000, O(N·d) brute-force is fast enough (~40ms) and has zero dependencies |
@@ -153,9 +160,9 @@ FrameScout uses a **three-process architecture** for maximum performance, safety
 
 **Indexing a folder**: Rust walks the selected directory, collects file paths, and sends them in batches to the Python worker via ZMQ. Python generates SigLIP 2 image embeddings (768D) and OCR text for each image or video frame, then returns the results. Rust stores everything in SQLite and the in-memory FlatVector matrix, while the frontend shows real-time progress.
 
-**Searching by text**: The frontend sends a query to Rust, which forwards it to Python for SigLIP 2 text embedding. Rust then searches the FlatVector matrix using dot-product similarity, combines the results with OCR, note, and filename scores, and returns ranked results to the frontend.
+**Searching by text**: The frontend sends a query to Rust, which forwards it to Python for SigLIP 2 text embedding. Rust searches the FlatVector matrix by dot-product similarity and returns raw per-channel scores (semantic, OCR, note, filename) to the frontend, which normalizes and fuses them into a final ranked result.
 
-**Searching by image**: The workflow is the same as text search, except Python generates a SigLIP 2 image embedding instead of a text embedding from the reference image.
+**Searching by image**: The same flow as text search, except Python generates a SigLIP 2 image embedding from the reference image instead of a text embedding.
 
 ---
 
@@ -163,16 +170,16 @@ FrameScout uses a **three-process architecture** for maximum performance, safety
 
 ### Hybrid Scoring Model
 
-FrameScout combines **four signals** into a unified relevance score:
+FrameScout combines **four signals** into a unified relevance score. Since v3.2.0 the backend returns **raw, independently computed signals** — the SigLIP cosine similarity and per-channel literal hit flags — and the frontend normalizes each one before fusing, so semantic matches are no longer drowned out by filename matches:
 
 ```text
-final_score = vector_similarity × 1.0      (semantic meaning)
-            + ocr_match         × 2.0      (text in image)
-            + note_match        × 2.5      (user annotations)
-            + filename_match    × 3.0      (path/name match)
+fused_score = sigmoid(cosine)   × semantic_weight  (semantic meaning)
+            + ocr_hit           × ocr_weight        (text in image)
+            + note_hit          × note_weight       (user annotations)
+            + filename_hit      × filename_weight   (path/name match)
 ```
 
-Each component can be toggled independently in the UI. Results are scored, ranked, and paginated in real time.
+The normalization and fusion live in the frontend (`utils/score.ts`), and each channel can be toggled independently in the UI. Results are scored, ranked (with a stable tie-breaker), and paginated in real time. *Note: the fusion weights and relevance thresholds are currently fixed constants — see Known Limitations.*
 
 ### FlatVector Matrix Search
 
@@ -200,7 +207,7 @@ Tested on a desktop with AMD Ryzen 7 5800X + 32GB RAM + NVIDIA RTX 3070 (ONNX wi
 | 10,000 images   | 7.2 ms             | 9.5 ms              | ~800 img/min     |
 | 50,000 images   | 38.0 ms            | 45.0 ms             | ~600 img/min     |
 
-> **Disclaimer**: These are benchmark results from our development environment. Actual performance depends on your hardware and dataset characteristics. Reproduce on your machine using the provided benchmark script (coming soon). v3.0.2 introduces index-time ordering, which does not affect query latency.
+> **Disclaimer**: These are benchmark results from our development environment. Actual performance depends on your hardware and dataset characteristics. Reproduce on your machine with `python src/inference-worker/scripts/benchmark.py --library <path>` (writes `benchmarks/YYYY-MM-DD.json`).
 
 ---
 
@@ -231,7 +238,7 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 # > ⚠️ This step requires internet access. After completion, FrameScout works fully offline.
-# 3. Download SigLIP 2 + EasyOCR models (one-time, ~1.5GB total) (from src/inference-worker)
+# 3. Download SigLIP 2 + BGE-M3 models (one-time, ~1.5GB total) (from src/inference-worker)
 python ../../scripts/download_models.py
 
 # 4. Build and run (Community Edition)
@@ -244,31 +251,28 @@ npm run tauri dev          # Development mode
 ### Packaging the Inference Worker
 
 The Python inference worker must be compiled into a standalone executable for Tauri to launch it.
+The preferred packager is **Nuitka** (no temp-extraction delay, ~30–50% smaller, millisecond startup);
+PyInstaller is a legacy fallback.
 
-```bash
+```powershell
 # From the repository root
 cd src/inference-worker
-# Activate your virtual environment first
-pyinstaller --noconfirm --onedir --console --name "ai_worker" \
-    --hidden-import "transformers" \
-    --hidden-import "easyocr" \
-    main.py
+# Activate your virtual environment first, then:
+.\build_nuitka.ps1            # release (standalone + onefile)
+# .\build_nuitka.ps1 -Onedir # debug (standalone only, faster to build)
 ```
 
-After successful build, copy the output to the Tauri binary folder:
+The script handles the DirectML `capi` DLLs, the wheel-bundled RapidOCR weights, the external
+`models\` resources, and deployment to `..\FrameScout-UI\src-tauri\bin\ai_worker\` automatically.
+See `src/inference-worker/BUILD.md` §4 for details.
 
-```bash
-cp -r dist/ai_worker ../FrameScout-UI/src-tauri/bin/
-```
-
-Now `npm run tauri dev` will automatically start the compiled worker.
-
-> **Note:** The packaged worker looks for models in `./models/` relative to its own location. After copying to `src/FrameScout-UI/src-tauri/bin/`, ensure the `models` folder exists there, or adjust the path in `main.py`.
+> **Note:** The packaged worker looks for models in `./models/` relative to its own location.
+> The Nuitka script copies `models\` next to the exe for you.
 
 ### First Launch
 
 1. The splash screen appears: *"FRAME SCOUT NEURAL LINK ESTABLISHING..."*
-2. SigLIP 2 + EasyOCR models load into memory (varies depending on hardware)
+2. SigLIP 2 + RapidOCR + BGE-M3 models load into memory (varies depending on hardware)
 3. You'll see the main interface with the search console
 4. Click **Browse** → select a folder containing images
 5. Click **Start Indexing** → watch the real-time extraction bus
@@ -278,35 +282,54 @@ Now `npm run tauri dev` will automatically start the compiled worker.
 
 ## 🗺️ Roadmap
 
-### v3.1.x (Current — Stability & Polish)
+> **A note on honesty**: FrameScout is actively developed by a small team. The items below are implemented and functional, but a few are still in a "first version" state — the detailed gaps are listed up front in [Known Limitations](#-known-limitations). Everything marked "planned" is genuinely not built yet.
+
+### v3.2.0 (Current — 2026-10-08)
 
 - [x] Core search (text + image + OCR + notes)
-- [x] Visual clustering
-- [x] Smart folders
 - [x] SigLIP 2 migration (768D embeddings, ONNX Runtime)
+- [x] Normalized hybrid scoring (semantic no longer drowned by filename matches)
+- [x] Visual clustering (medoid representative, sampled for large libraries)
+- [x] Smart folders (persistent, renamable, real counts, delete confirmation) — *single-query scope*
+- [x] "Show All" mode (flat listing without pagination)
 - [x] Index-time sorting (new files always appear first)
-- [x] “Show All” mode (flat listing without pagination)
 - [x] RwLock optimization (non-blocking search during scan)
-- [ ] Enhance smart folders and other user experiences
-- [ ] Hover tooltips with file metadata
-- [ ] Per-image delete (not just bulk ghost purge)
-- [ ] Video timeout reduced to 10s + loading animation
+- [x] Query preprocessing (trim + NFKC + tokenization + negative terms)
+- [x] Scene-detection video frame extraction + adjacent-frame dedup
+- [x] FTS5 trigram fault-tolerant text search — *text entries only*
+- [x] Lightbox preview (zoom / rotate / fullscreen / OCR hit red-boxes)
+- [x] Right-click open / reveal-in-explorer / copy path
+- [x] Drag-and-drop image-to-search
+- [x] Scan pause/cancel + ETA + failed-file retry
+- [x] Multi-select + candidate set + CSV/Markdown/JSON export
+- [x] Global Toast notifications + keyboard shortcuts (Esc / `/` / arrows / Space)
+- [x] Search history + de-jargoned search modes
+- [x] Frame-accurate video notes + Markdown note rendering
+- [x] Database backup / integrity check — *one-way (no in-app restore)*
+- [x] Data timeline + "on this day last year"
+- [x] RRF cross-channel fusion (`search_unified`)
+- [x] RPC timeout convergence (no more infinite hangs)
+- [x] Unified search wired to the frontend + per-channel score-source bars
+- [x] Settings page + preferences persistence (path / page-size remembered across restarts)
+- [x] Scan stop button + cancelled batches distinguished in reports
+- [x] Disk-offline ghost protection (offline drives greyed out & purge blocked)
+- [x] Batch note editing (apply one note to many selected files)
 
-### v3.1 (Cross-Platform & UX)
-
-- [ ] Folder tree sidebar view
-- [ ] Multiple view modes (grid / list / timeline)
-- [ ] Export/Import database (SQLite backup)
-- [ ] Data timeline (visualize your indexing history)
-
-### v3.2 (Performance & Intelligence)
+### v3.3 (Planned)
 
 - [ ] Faiss integration for N > 50K
-- [ ] Scene-detection for video keyframes
-- [ ] Batch operations (multi-select delete/export)
+- [ ] Smart-folder condition editor (boolean / time / file-type / seed-image conditions)
+- [ ] FTS5 coverage for OCR / filenames / notes
+- [ ] Partition / batch / date-range search
+- [ ] In-app database restore
 - [ ] Multi-modal fusion search (text + image simultaneously)
+- [ ] Binary PDF/DOCX text extraction
+- [ ] User-adjustable relevance thresholds & video extraction limits
 - [ ] macOS build (Apple Silicon native)
 - [ ] Linux build (AppImage + Flatpak)
+- [ ] Folder tree sidebar view
+- [ ] Per-image delete (not just bulk ghost purge)
+- [ ] Virtual scrolling for very large libraries
 
 ---
 
@@ -331,11 +354,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 FrameScout core is licensed under **Apache License 2.0**. See [LICENSE](LICENSE) for details.
 
+© 2026 AetherFlow Labs Inc.
+
 ---
 
 ## ™️ Trademarks
 
-"FrameScout", "FrameScout — Offline AI Search", and the FrameScout logo are trademarks of Bob G. S. Ning.
+"FrameScout", "FrameScout — Offline AI Search", and the FrameScout logo are trademarks of **Bob G. S. Ning**.
 
 All other trademarks are the property of their respective owners.
 
@@ -344,7 +369,7 @@ All other trademarks are the property of their respective owners.
 ## 🙏 Acknowledgments
 
 - **Google SigLIP 2** — for the open-source contrastive language-image pre-training model (used via ONNX)
-- **EasyOCR** — for the lightweight, multi-language OCR engine
+- **RapidOCR** — for the lightweight, multi-language OCR engine
 - **ONNX Runtime** — for cross-platform, hardware-accelerated inference
 - **Tauri** — for the secure, lightweight desktop app framework
 - **ZeroMQ** — for reliable, high-performance inter-process communication
@@ -359,7 +384,7 @@ All other trademarks are the property of their respective owners.
 - **General Questions**: <bobgsning@outlook.com>
 - **Security Concerns**: Please email directly (PGP key available on request)
 
-> 🤝 **We need your help!** FrameScout is a one-person project right now. If you're passionate about privacy-first AI tools, we'd love your contribution — whether it's code, documentation, bug reports, or just testing on your machine.
+> 🤝 **We need your help!** FrameScout is a small project right now. If you're passionate about privacy-first AI tools, we'd love your contribution — whether it's code, documentation, bug reports, or just testing on your machine.
 > We're currently preparing our first good first issues. In the meantime, feel free to [open a discussion](https://github.com/bobgsning/FrameScout/discussions) or [browse the codebase](https://github.com/bobgsning/FrameScout).
 
 ---

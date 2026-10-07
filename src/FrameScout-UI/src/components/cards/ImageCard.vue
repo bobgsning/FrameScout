@@ -2,10 +2,11 @@
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
 import { getAssetUrl } from '@/utils/media'
-import { formatScore, getNumericScore } from '@/utils/score'
+import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore } from '@/utils/score'
 import { highlight } from '@/utils/highlight'
 import OcrPanel from './OcrPanel.vue'
 import NotePanel from './NotePanel.vue'
+import ScoreBar from './ScoreBar.vue'
 
 const props = defineProps<{
   item: SearchResult
@@ -13,8 +14,22 @@ const props = defineProps<{
   isImageSearch: boolean
 }>()
 
-const scoreText = computed(() => formatScore(props.item.score, props.isImageSearch))
-const numericScore = computed(() => getNumericScore(props.item.score, props.isImageSearch))
+// P0-5：单击图片直接开大图（此前只能右键菜单找「大图查看」）
+const emit = defineEmits<{
+  openLightbox: [item: SearchResult]
+}>()
+
+// 方案 C：文字搜索走结构化自决映射；以图搜图 / BGE 保持原映射。
+const scoreText = computed(() => {
+  if (props.item.scoreKind === 'bge') return formatScore(props.item.score, false, 'bge')
+  if (props.isImageSearch) return formatScore(props.item.score, true)
+  return formatSearchScore(props.item)
+})
+const numericScore = computed(() => {
+  if (props.item.scoreKind === 'bge') return getNumericScore(props.item.score, false, 'bge')
+  if (props.isImageSearch) return getNumericScore(props.item.score, true)
+  return getSearchNumericScore(props.item)
+})
 const highlightedPath = computed(() =>
   highlight(props.item.path, props.searchQuery, props.isImageSearch)
 )
@@ -24,7 +39,14 @@ const visibleTags = computed(() =>
 </script>
 
 <template>
-  <img :src="getAssetUrl(props.item.path)" @error="props.item.isMissing = true" class="media-preview" />
+  <img
+    :src="getAssetUrl(props.item.path)"
+    :alt="props.item.path"
+    loading="lazy"
+    @error="props.item.isMissing = true"
+    @click="emit('openLightbox', props.item)"
+    class="media-preview clickable"
+  />
 
   <!-- 低置信度折叠条：点击展开 -->
   <div
@@ -33,7 +55,7 @@ const visibleTags = computed(() =>
     @click="props.item.collapsedLowScore = false"
   >
     <span class="collapse-icon">❌</span>
-    <span class="collapse-text">Low confidence ({{ scoreText }})</span>
+    <span class="collapse-text">{{ $t('cards.lowConfidence', { score: scoreText }) }}</span>
     <span class="expand-arrow">▶</span>
   </div>
 
@@ -41,7 +63,7 @@ const visibleTags = computed(() =>
     <p class="file-path" v-html="highlightedPath"></p>
 
     <div class="card-meta-row">
-      <p class="type-text">🖼️ Static Image</p>
+      <p class="type-text">{{ $t('cards.staticImage') }}</p>
       <p class="match-score">{{ scoreText }}</p>
     </div>
 
@@ -54,27 +76,34 @@ const visibleTags = computed(() =>
         v-if="numericScore >= 60.0 && visibleTags.length === 0"
         class="tag-badge semantic-tag"
       >
-        💡 Semantic
+        {{ $t('cards.semantic') }}
       </span>
       <span
         v-if="numericScore < 60.0 && visibleTags.length === 0"
         class="tag-badge low-tag"
       >
-        👻 Low Confidence
+        {{ $t('cards.lowConfidenceBadge') }}
       </span>
     </div>
+
+    <!-- 得分来源条（P2-6）：为什么它排第一 -->
+    <ScoreBar v-if="props.item.matches?.length" :matches="props.item.matches" />
 
     <OcrPanel :item="props.item" :search-query="props.searchQuery" :is-image-search="props.isImageSearch" />
     <NotePanel :item="props.item" />
 
     <!-- 仅低置信度卡片才有收起按钮 -->
     <div v-if="props.item.collapsedLowScore !== undefined" class="collapse-footer">
-      <button class="btn-collapse-up" @click="props.item.collapsedLowScore = true">▲ Collapse</button>
+      <button class="btn-collapse-up" @click="props.item.collapsedLowScore = true">{{ $t('cards.collapse') }}</button>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* P0-5：图片可点击预览 */
+.media-preview.clickable {
+  cursor: zoom-in;
+}
 .type-text {
   font-size: 12px;
   color: #888;

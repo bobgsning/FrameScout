@@ -8,12 +8,29 @@ const props = defineProps<{
   currentFile: string
   scanProgress: ScanProgress
   scanMsg: string
+  /** P0-8：已用时间（秒），useScanner 已算好，此前不传给 UI */
+  scanElapsed: number
+  /** P0-8：预计剩余时间（秒），按当前速度估算 */
+  scanEta: number
+}>()
+
+// P1-9 / 债单 A6：停止扫描（用户终于有取消入口，不再只能等或杀进程）
+const emit = defineEmits<{
+  (e: 'stop'): void
 }>()
 
 const percent = computed(() => {
   const { current, total } = props.scanProgress
   return total > 0 ? (current / total) * 100 : 0
 })
+
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds < 0) return ''
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
 </script>
 
 <template>
@@ -22,25 +39,31 @@ const percent = computed(() => {
 
     <div v-if="props.isScanning || props.currentFile" class="bus-panel">
       <div class="bus-header">
-        <span class="bus-title">⚡ Real-time Extraction Bus</span>
-        <span class="bus-status" :class="{ 'status-warning': props.currentStatus.includes('Batch') }">
-          {{ props.currentStatus }}
-        </span>
+        <span class="bus-title">{{ $t('extraction.title') }}</span>
+        <div class="bus-header-right">
+          <span class="bus-status" :class="{ 'status-warning': props.currentStatus.includes('Batch') }">
+            {{ props.currentStatus }}
+          </span>
+          <button v-if="props.isScanning" class="btn-stop" @click="emit('stop')">{{ $t('extraction.stop') }}</button>
+        </div>
       </div>
 
       <div v-if="props.scanProgress.total > 0" class="progress-box">
         <div class="progress-info">
           <span>
-            Parsing Progress: {{ props.scanProgress.current }} / {{ props.scanProgress.total }},
+            {{ $t('extraction.progress', { current: props.scanProgress.current, total: props.scanProgress.total }) }}
           </span>
           <span class="progress-percentage">{{ percent.toFixed(1) }}%</span>
+          <span v-if="props.scanElapsed > 0" class="progress-eta">
+            {{ $t('extraction.eta', { elapsed: formatDuration(props.scanElapsed), eta: props.scanEta > 0 ? formatDuration(props.scanEta) : '…' }) }}
+          </span>
         </div>
         <div class="progress-track">
           <div class="progress-fill" :style="{ width: percent + '%' }"></div>
         </div>
       </div>
 
-      <div class="current-file-text">&gt; {{ props.currentFile || 'Awaiting signal...' }}</div>
+      <div class="current-file-text">&gt; {{ props.currentFile || $t('extraction.awaiting') }}</div>
     </div>
   </div>
 </template>
@@ -74,8 +97,31 @@ const percent = computed(() => {
 .bus-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   border-bottom: 1px solid #1a1a24;
   padding-bottom: 8px;
+}
+
+.bus-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-stop {
+  padding: 4px 14px;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: monospace;
+}
+
+.btn-stop:hover {
+  background: rgba(248, 113, 113, 0.22);
 }
 
 .bus-title {
@@ -97,10 +143,17 @@ const percent = computed(() => {
   font-size: 12px;
   color: #aaa;
   margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .progress-percentage {
   color: #2fe9e9;
   font-weight: bold;
+}
+.progress-eta {
+  color: #ffaa00;
 }
 
 .progress-track {

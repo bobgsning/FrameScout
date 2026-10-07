@@ -1,0 +1,254 @@
+// FrameScout Inter-Process Communication Protocol
+// Defines the wire format between the Rust/Tauri core and the Python inference worker.
+//
+// Compile (Python): protoc --python_out=<worker dir> --pyi_out=<worker dir> framescout.proto
+// Compile (Rust)  : prost-build in build.rs
+//
+// Version: 3.2.0
+// Author: bobgsning
+//
+// ============================================================
+//  协议演进日志（每次变更必须登记，proto 就是对外能力宣言）
+// ============================================================
+// 3.2.0
+//   - 统一文件名为 framescout.proto（消除 search.proto 与 package framescout 的历史不一致）
+//   - 新增 EmbeddingModel 枚举，FrameResult 追加 dense_vector / sparse_weights（BGE-M3）
+//   - 新增结构化 OcrLine（行级文本 + 归一化 bbox + 置信度 + 语言 + 时间戳）
+//   - 新增 TextTask / TextEntry / TextEmbedding / SearchRequest / SearchResponse（文本通道）
+//   - EncodeRequest 追加 max_results / model / session_id / source
+//   - OcrConfig.enable_ocr 改为 optional（显式 presence）；BatchPaths 更名为 BatchTask
+//   - OcrConfig 内嵌进各载荷（SingleFileTask / BatchTask / SingleOcrTask），
+//     单文件分支由裸 string 改为 SingleFileTask 消息；single_file_ocr_config 弃用（reserved 6）
+//   - 迁移说明：既有 SigLIP 索引继续有效；文本侧新数据走 BGE-M3，两者不得混算
+//   - ⚠️ 本次是**受控的结构修正**（oneof 分支类型变更），Rust 与 Python 两端必须同步升级
+//   - SuccessPayload 追加 text_entries（text_task 分支的返回，承载纯文本条目 TextEntry）
+//
+// ============================================================
+//  Protobuf 铁律（改动前必读）
+// ============================================================
+//   1. 只追加新编号，绝不复用旧编号；
+//   2. 加字段用 optional / repeated，绝不改已有字段的类型；
+//   3. 永不删除字段编号，弃用写 reserved；
+//   4. 不版本化包名（package framescout 恒定），用本文件头 Version 标识演进；
+//   5. 每次改完重新生成 Rust(build.rs) 与 Python(protoc) 绑定。
+//
+// ============================================================
+//  跨进程字节序约定（与 SQLite vector_f32 一致，写死）
+// ============================================================
+//   向量一律是「小端序平面 f32 字节布局」，无 header、无 padding。
+//   Rust: storage/vector_blob.rs   Python: utils/vector_utils.py
+
+syntax = "proto3";
+package framescout;
+
+// ============================================================
+// EmbeddingModel: 向量出自哪个模型
+// ============================================================
+// ⚠️ 混库禁忌：库内可能同时存在多个模型的向量。
+//    **严格按 embedding_model 过滤查询目标，绝不跨模型计算相似度**（结果是垃圾）。
+enum EmbeddingModel {
+  UNKNOWN_MODEL = 0;      // 旧数据未标注时的默认值
+  SIGLIP_768 = 1;         // SigLIP 2 视觉向量，768 维（历史数据自洽）
+  BGE_M3_DENSE = 2;       // BGE-M3 稠密向量，1024 维
+  BGE_M3_SPARSE = 3;      // BGE-M3 稀疏权重（词 -> 权重）
+}
+
+// ============================================================
+// OcrConfig: 选择性执行与多语言支持
+// ============================================================
+message OcrConfig {
+  // optional 而非裸 bool：proto3 的裸 bool 无法区分「未传」与「传了 false」。
+  // （OcrConfig 本身是 message，天然有 presence；这里再显式声明是为了让
+  //  「没配置」与「配置了但关闭」在语义上不可混淆。）
+  optional bool enable_ocr = 1;   // false 则完全跳过 OCR（纯视觉快模式）
+  repeated string languages = 2;  // e.g., ["en"], ["ch_sim", "en"], ["ja", "en"]
+}
+
+// ============================================================
+// OcrLine: 行级 OCR 结果（真数据源）
+// ============================================================
+// `ocr_text` 保留为拼接全文（兼容旧管道与旧搜索），
+// 但**检索与定位以 ocr_lines 为真数据源**。
+message OcrLine {
+  string text = 1;
+  // 归一化 0~1：该文本块的**旋转外接矩形之直角包围盒**。
+  // 归一化存储避免分辨率依赖，任意缩放都能按比例画框。
+  float bbox_left = 2;
+  float bbox_top = 3;
+  float bbox_right = 4;
+  float bbox_bottom = 5;
+  float score = 6;            // 识别置信度；低于阈值的不应直接喂给文本模型
+  string lang = 7;            // 识别语言，如 "en" / "ch_sim"
+  int64 timestamp_ms = 8;     // 视频帧时间戳；图片恒为 0
+  string payload_json = 9;    // 原始四角坐标等扩展信息，供未来精确框选
+}
+
+// ============================================================
+// SingleOcrTask: 对已索引文件按需重跑 OCR
+// ============================================================
+message SingleOcrTask {
+  repeated string file_paths = 1;
+  repeated string languages = 2;
+  OcrConfig ocr_config = 3;   // 与 BatchTask 对齐，统一走内嵌配置
+}
+
+// ============================================================
+// SingleFileTask: 单文件编码任务
+// ============================================================
+// v3.2.0 结构修正：原先 oneof 里是裸 `string file_path = 2`，OCR 配置却悬在
+// oneof 之外（`single_file_ocr_config = 6`），靠注释约定「哪种载荷配哪种配置」——
+// 这是隐含约束，容易写错。现在把配置内嵌进载荷本身，让语义体现在结构里。
+message SingleFileTask {
+  string file_path = 1;
+  OcrConfig ocr_config = 2;
+}
+
+// ============================================================
+// BatchTask: 批量编码任务
+// ============================================================
+// 原名 BatchPaths（"路径袋"），实为「批量路径 + OCR 配置」，故借本次演进更名。
+// 消息名变更不影响 wire 格式，仅影响生成代码的符号名。
+message BatchTask {
+  repeated string file_paths = 1;
+  OcrConfig ocr_config = 2;
+}
+
+// ============================================================
+// TextEmbedding / TextEntry / TextTask: 文本通道
+// ============================================================
+// 与视觉并行的「第二条检索公路」。
+//
+// ⚠️ 两类文本必须分开（极易被忽略的陷阱）：
+//    · 媒体内嵌文字（OCR Text）——是媒体的**属性**，碎片化、伴随视觉上下文，
+//      用户意图是「找到这个画面」；
+//    · 纯文本内容（笔记 / 文档 / 外部转录）——是**独立检索对象**，
+//      用户意图是「找到这段内容本身」。
+//   二者向量空间一致（都出自 BGE-M3），但检索价值异构，协议层必须先分开，
+//   将来再按需做 search_all 混合召回。混在一个索引会翻车：
+//   搜「什么是爱情」会召回一堆电影字幕与路牌。
+message TextEmbedding {
+  repeated float dense = 1;        // BGE-M3 dense
+  map<string, float> sparse = 2;   // BGE-M3 sparse：词 -> 权重，JSON 友好
+}
+
+message TextEntry {
+  string entry_id = 1;
+  string source_uri = 2;           // 来源标识（非文件系统绝对路径；音频可填 "audio_memo"）
+  string content = 3;
+  TextEmbedding embedding = 4;
+  double index_time = 5;           // Unix 时间戳（秒）
+  map<string, string> metadata = 6; // 标签 / 语言 / 作者
+}
+
+message TextTask {
+  string text = 1;
+  string source_uri = 2;
+  map<string, string> metadata = 3;
+}
+
+// ============================================================
+// EncodeRequest: 主请求
+// ============================================================
+message EncodeRequest {
+  string task_id = 1;
+
+  oneof payload {
+    // 单文件（图片或视频）：配置内嵌，不再依赖外部字段
+    SingleFileTask file_task = 2;
+
+    // 文本查询（语义检索）
+    string text = 3;
+
+    // 批量编码
+    BatchTask batch = 4;
+
+    // 按需 OCR
+    SingleOcrTask ocr_task = 5;
+
+    // 纯文本条目入库（文本通道）
+    TextTask text_task = 11;
+  }
+
+  // 编号 6 曾是 `single_file_ocr_config`（悬在 oneof 之外的单文件 OCR 配置）。
+  // 该设计已废弃——配置改为内嵌进各自载荷。铁律：永不删除编号，弃用写 reserved。
+  reserved 6;
+
+  int32 max_results = 7;           // 限制返回帧数，0 = 全部（长视频会产生上千帧）
+  EmbeddingModel model = 8;        // 期望的向量模型；默认 SIGLIP_768，兼容旧客户端
+  string session_id = 9;           // MCP 就绪：ZMQ 无状态而会话有状态，预留贯穿标识
+  string source = 10;              // 命令来源（"app" / "mcp"）：Rust 侧据此走白名单或沙箱
+}
+
+// ============================================================
+// ErrorInfo: 结构化错误
+// ============================================================
+message ErrorInfo {
+  int32 code = 1;            // HTTP 风格（500 = 内部错误，400 = 请求有误）
+  string message = 2;        // 人类可读描述
+  string context = 3;        // 错误上下文（"ai_inference", "file_read", ...）
+}
+
+// ============================================================
+// FrameResult: 一条已索引的媒体项
+//   图片：timestamp = 0.0
+//   视频：timestamp = 距视频起点的秒数
+// ============================================================
+message FrameResult {
+  float timestamp = 1;              // 视频内秒数（图片为 0.0）
+  repeated float vector = 2;        // SigLIP 2 768 维视觉向量
+  string ocr_text = 3;              // 拼接全文（兼容旧搜索）
+  string file_path = 4;             // 源文件绝对路径
+  double index_time = 5;            // 入库时间（Unix 时间戳，秒）
+
+  // --- 3.2.0 新增区（新编号）---
+  int64 capture_timestamp_ms = 6;   // 拍摄时间（EXIF / 元数据），无则 0
+  int64 duration_ms = 7;            // 视频总时长（毫秒），图片为 0
+  EmbeddingModel embedding_model = 8;
+  repeated float dense_vector = 9;      // BGE-M3 dense 1024
+  map<string, float> sparse_weights = 10; // BGE-M3 sparse：词 -> 权重
+  repeated OcrLine ocr_lines = 11;      // 行级 OCR 结果（检索与定位的真数据源）
+  string ocr_engine = 12;               // "easyocr" / "rapidocr"
+  string ocr_model = 13;                // "ppocrv4_mobile" 等
+}
+
+// ============================================================
+// SuccessPayload: 一个或多个 FrameResult，或纯文本条目
+// ============================================================
+message SuccessPayload {
+  repeated FrameResult frames = 1;
+  // 纯文本条目（text_task 分支的返回）：文本通道入库时承载 TextEntry。
+  // 与 frames 互斥出现——媒体索引走 frames，纯文本索引走 text_entries。
+  repeated TextEntry text_entries = 2;
+}
+
+// ============================================================
+// EncodeResponse: 主响应
+// ============================================================
+message EncodeResponse {
+  string task_id = 1;
+
+  oneof result {
+    SuccessPayload success = 2;
+    ErrorInfo error = 3;
+  }
+}
+
+// ============================================================
+// SearchRequest / SearchResponse: 显式检索
+// ============================================================
+// 把「索引」与「检索」职责分开：EncodeRequest 是索引动作，
+// SearchRequest 才是检索动作。这让未来的 MCP Tool 描述能是最简单的一句话：
+// 「你输入一句话，我返回相关的图片、视频和文本」。
+message SearchRequest {
+  string query_text = 1;
+  bool search_media = 2;      // 走 SigLIP / OCR 文本向量
+  bool search_text = 3;       // 走纯文本条目
+  int32 top_k = 4;
+  EmbeddingModel model = 5;   // 严格按模型过滤，绝不跨模型
+  string session_id = 6;
+}
+
+message SearchResponse {
+  repeated FrameResult media_hits = 1;
+  repeated TextEntry text_hits = 2;
+}

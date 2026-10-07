@@ -5,6 +5,8 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { LicenseStatus } from '@/types/license'
+import { useToast } from './useToast'
+import { t } from '@/i18n'
 
 const licenseStatus = ref<LicenseStatus>({ is_pro: false, email: '', limit: 100 })
 const showActivateModal = ref(false)
@@ -27,7 +29,9 @@ export function useLicense() {
       const res = await invoke<LicenseStatus>('get_license_status')
       licenseStatus.value = res
     } catch (e) {
-      console.error(e)
+      // P1-10：授权状态拉取失败此前静默；现给可见反馈
+      const { push } = useToast()
+      push(t('license.statusFailed', { err: e }), 'error')
     }
   }
 

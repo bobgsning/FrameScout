@@ -2,10 +2,11 @@
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
 import { getAssetUrl, withFrameAnchor } from '@/utils/media'
-import { formatScore, getNumericScore } from '@/utils/score'
+import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore } from '@/utils/score'
 import { highlight } from '@/utils/highlight'
 import OcrPanel from './OcrPanel.vue'
 import NotePanel from './NotePanel.vue'
+import ScoreBar from './ScoreBar.vue'
 
 const props = defineProps<{
   item: SearchResult
@@ -20,8 +21,17 @@ const emit = defineEmits<{
 
 /** 视频定位到命中的具体帧 */
 const src = computed(() => withFrameAnchor(getAssetUrl(props.item.path), props.item.timestamp))
-const scoreText = computed(() => formatScore(props.item.score, props.isImageSearch))
-const numericScore = computed(() => getNumericScore(props.item.score, props.isImageSearch))
+// 方案 C：文字搜索走结构化自决映射；以图搜图 / BGE 保持原映射。
+const scoreText = computed(() => {
+  if (props.item.scoreKind === 'bge') return formatScore(props.item.score, false, 'bge')
+  if (props.isImageSearch) return formatScore(props.item.score, true)
+  return formatSearchScore(props.item)
+})
+const numericScore = computed(() => {
+  if (props.item.scoreKind === 'bge') return getNumericScore(props.item.score, false, 'bge')
+  if (props.isImageSearch) return getNumericScore(props.item.score, true)
+  return getSearchNumericScore(props.item)
+})
 const highlightedPath = computed(() =>
   highlight(props.item.path, props.searchQuery, props.isImageSearch)
 )
@@ -46,7 +56,7 @@ const visibleTags = computed(() =>
     <p class="file-path" v-html="highlightedPath"></p>
 
     <div class="card-meta-row">
-      <p class="badge-timestamp">⏱️ Sec {{ props.item.timestamp }}</p>
+      <p class="badge-timestamp">{{ $t('cards.sec', { time: props.item.timestamp }) }}</p>
       <p class="match-score">{{ scoreText }}</p>
     </div>
 
@@ -57,15 +67,18 @@ const visibleTags = computed(() =>
         v-if="numericScore >= 60.0 && visibleTags.length === 0"
         class="tag-badge semantic-tag"
       >
-        💡 Semantic
+        {{ $t('cards.semantic') }}
       </span>
       <span
         v-if="numericScore < 60.0 && visibleTags.length === 0"
         class="tag-badge low-tag"
       >
-        👻 Low Confidence
+        {{ $t('cards.lowConfidenceBadge') }}
       </span>
     </div>
+
+    <!-- 得分来源条（P2-6）：为什么它排第一 -->
+    <ScoreBar v-if="props.item.matches?.length" :matches="props.item.matches" />
 
     <OcrPanel :item="props.item" :search-query="props.searchQuery" :is-image-search="props.isImageSearch" />
     <NotePanel :item="props.item" />

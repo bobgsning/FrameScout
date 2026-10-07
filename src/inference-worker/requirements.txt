@@ -8,13 +8,33 @@
 onnxruntime-directml>=1.24.4                             # Windows DirectML（当前唯一后端）
 # onnxruntime>=1.17.0                                    # 纯 CPU（如需回退再用）
 # onnxruntime-gpu>=1.17.0                                 # NVIDIA CUDA（需另配 CUDA/cuDNN）
+#
+# ⚠️ 安装顺序陷阱（重要）：rapidocr_onnxruntime 的依赖声明是 `onnxruntime>=1.7.0`
+#    （标准包名），而 pip 不会把 `onnxruntime-directml` 视为它的替代。因此
+#    `pip install rapidocr_onnxruntime` 会**自动再拉一个标准 onnxruntime**，
+#    与 directml 同名冲突，最终 import 到的可能是不含 DmlExecutionProvider 的标准包。
+#    正确顺序（见 BUILD.md §1.2）：
+#       1) 先 `pip install onnxruntime-directml>=1.24.4`
+#       2) 再 `pip install --no-deps rapidocr_onnxruntime`（其余依赖手动确认）
+#       3) 验证 `python -c "import onnxruntime as ort; print(ort.get_available_providers())"`
+#          应看到 DmlExecutionProvider，否则 RapidOCR 会静默退回 CPU。
 
-transformers>=4.37.0
+transformers>=4.50,<5       # 锁 4.x（下限 >=4.50）：4.x 对 torch 软依赖，是 -NoTorch 剔除 torch 的前提；5.x 的 SigLIP image processor 继承 TorchvisionBackend、无 torch 会崩。⚠️ 下限必须 >=4.50——4.49 有 SigLIP 2 processor 映射 bug（硬编码 SiglipTokenizer 去加载 SigLIP 2 的 GemmaTokenizer，报 vocab_file=None），>=4.50 已修复（实测 4.57.6 无 torch 下 AutoProcessor 正确加载 GemmaTokenizerFast + SiglipImageProcessor）。
+sentencepiece>=0.2.0        # SigLIP 2(Gemma 文本塔)/BGE-M3(XLM-R) tokenizer 的软依赖（slow 路径读 tokenizer.model/spiece.model 必需），fast 路径通常不需要，但显式声明避免 --no-deps 漏装。
 Pillow>=10.0.0
 numpy>=1.26.0
 
 # OCR
-easyocr>=1.7.0
+# 概念澄清（最容易糊的一点）：
+#   PP-OCRv4  = 百度的**模型体系**（det / cls / rec 三段权重）
+#   ONNX 版   = paddle2onnx 导出，脱离 PaddlePaddle 大框架
+#   RapidOCR  = **推理封装引擎**（不是模型本身），默认即加载 PP-OCRv4 的 ONNX 权重
+# 所以不是二选一，而是「RapidOCR 的执行管线 + PP-OCRv4 的 ONNX 权重」。
+#
+# 相比 EasyOCR：不带 PyTorch、冷启动与常驻内存更轻、DirectML 是原生主路径，
+# 中文印刷体 / 低清截图 / 倾斜字幕更稳，且天然适配「OCR → 文本向量」的语义管线。
+# 默认语言包内置于 wheel 中，无需额外下载；日文/韩文等按需加载语言包。
+rapidocr_onnxruntime>=1.3.23
 
 # Computer Vision (headless)
 opencv-python-headless>=4.8.0
@@ -23,5 +43,7 @@ opencv-python-headless>=4.8.0
 pyzmq>=25.0.0
 protobuf>=4.25.0
 
-# Optional: PyTorch (only needed if you plan to run original CLIP or debug)
+# Optional: PyTorch —— worker 推理全走 ONNX(DirectML)，运行时不需要 torch。
+#   打包时用 build_nuitka.ps1 -NoTorch 将 torch/torchvision 整棵剔出产物（体积从 GB 级降到百 MB 级）。
+#   仅 download_models.py --bge 导出 BGE-M3 ONNX 时需要 torch，那是独立的导出环境，不影响本 venv。
 # torch>=2.0.0

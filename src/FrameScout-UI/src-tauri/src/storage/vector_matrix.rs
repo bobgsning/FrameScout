@@ -57,7 +57,10 @@ impl FlatVectorMatrix {
     }
 
     pub fn contains_path(&self, path: &str) -> bool {
-        self.metadata.iter().any(|m| m.path == path)
+        // P1-15 / D2 / C13：用大小写折叠键比较，避免 NTFS 大小写不敏感导致重复索引。
+        // 旧实现 `m.path == path` 精确比较，C:\Users\a.jpg 与 C:\users\A.jpg 被视为不同文件。
+        let key = crate::storage::path_key(path);
+        self.metadata.iter().any(|m| crate::storage::path_key(&m.path) == key)
     }
 
     /// O(N·d) 暴力检索：点积相似度。

@@ -7,7 +7,7 @@ use crate::proto::framescout as proto;
 pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
     let context = zmq::Context::new();
     let mut retries = 0;
-    const MAX_RETRIES: u32 = 50;
+    const MAX_RETRIES: u32 = 30;
 
     loop {
         let check_socket = match context.socket(zmq::REQ) {
@@ -25,11 +25,9 @@ pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
 
         let _ = check_socket.set_rcvtimeo(3000);
 
-        let ping_req = proto::EncodeRequest {
-            task_id: "PING_INIT".to_string(),
-            payload: Some(proto::encode_request::Payload::Text("PING_ENGINE".to_string())),
-            single_file_ocr_config: None,
-        };
+        let ping_req = crate::services::zmq_client::build_request(
+            proto::encode_request::Payload::Text("PING_ENGINE".to_string()),
+        );
         let mut buf = Vec::new();
         ping_req.encode(&mut buf).unwrap();
 

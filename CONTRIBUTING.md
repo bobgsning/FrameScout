@@ -31,15 +31,18 @@ Even rough ideas are welcome. We'll figure out the details together.
 2. Create a branch: `git checkout -b your-feature-name`
 3. Make your changes
 4. Test them manually (automated tests are planned but not yet available)
-5. If you modified `src/proto/search.proto`, regenerate the Python bindings:
+5. If you modified `src/proto/framescout.proto`, regenerate the Python bindings
+   (Rust bindings are generated automatically by `build.rs`):
 
 > **Prerequisite**: Install the Protocol Buffers compiler (`protoc`) from [https://github.com/protocolbuffers/protobuf/releases](https://github.com/protocolbuffers/protobuf/releases) and ensure it's in your PATH.
+> A bundled copy also lives at `src/proto/protoc.exe` (offline builds).
 
    ```bash
-   protoc -I=./src/proto --python_out=./src/inference-worker ./src/proto/search.proto
+   protoc -I=./src/proto --python_out=./src/inference-worker --pyi_out=./src/inference-worker ./src/proto/framescout.proto
    ```
 
-   The generated `search_pb2.py` is tracked in the repository, so this step is only needed when the proto schema changes.
+   The generated `framescout_pb2.py` / `framescout_pb2.pyi` are tracked in the repository, so this step is only needed when the proto schema changes.
+   Remember to bump the `Version:` header in the proto file and add an entry to the changelog there.
 6. Push and open a Pull Request
 
 Don't worry too much about commit message conventions. Just write something clear. If AI tools helped you, feel free to mention it in the PR description — but it's not required.

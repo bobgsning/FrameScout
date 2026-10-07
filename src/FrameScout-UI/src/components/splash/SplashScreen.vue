@@ -19,14 +19,14 @@ defineProps<{
 
     <div class="loader-ring"></div>
 
-    <h2 class="splash-title">FRAME SCOUT NEURAL LINK ESTABLISHING...</h2>
+    <h2 class="splash-title">{{ $t('splash.title') }}</h2>
     <p class="splash-subtitle">
-      Loading large SigLIP 2 &amp; EasyOCR models into high-dimensional memory, please wait...
+      {{ $t('splash.subtitle') }}
     </p>
     <p class="splash-subtitle">{{ message }}</p>
 
     <p v-if="status === 'connecting'" class="splash-retry">
-      Attempt {{ retry }} / {{ maxRetries }}
+      {{ $t('splash.retry', { retry, maxRetries }) }}
     </p>
     <p v-if="status === 'error'" class="splash-error">{{ message }}</p>
   </div>

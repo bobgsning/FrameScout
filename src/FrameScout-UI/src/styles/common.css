@@ -101,6 +101,74 @@ button:disabled {
 }
 
 /* ---------- Result grid & card shell ---------- */
+.results-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 auto 16px auto;
+  max-width: 800px;
+}
+.results-toolbar-label {
+  font-size: 12px;
+  color: #8888a0;
+  margin-right: 4px;
+}
+.results-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 4px;
+}
+
+/* Show All 模式顶部提示条（与底部 PaginationBar 的 show-all-bar 一致） */
+.show-all-bar-top {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  max-width: 800px;
+  margin: 0 auto 16px auto;
+  padding: 12px 20px;
+  background: #1a1a28;
+  border-radius: 8px;
+  border: 1px solid #333348;
+}
+.show-all-info-top {
+  color: #ccc;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* P1-2：批量加笔记进度条 */
+.batch-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 auto 16px auto;
+  padding: 10px 16px;
+  background: #121218;
+  border: 1px solid #2a2a36;
+  border-radius: 8px;
+}
+.batch-progress-label {
+  font-size: 12px;
+  color: #b0b0c0;
+  white-space: nowrap;
+}
+.batch-progress-track {
+  flex: 1;
+  height: 8px;
+  background: #1a1a24;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.batch-progress-fill {
+  height: 100%;
+  background: var(--grad-blue-cyan);
+  transition: width 0.2s ease;
+}
 .results-grid {
   display: flex;
   flex-wrap: wrap;
@@ -158,6 +226,84 @@ button:disabled {
   font-size: 12px;
   color: #2fe9e9;
   margin: 0;
+}
+
+/* ---------- P1-7/P1-8: 骨架屏 / 空态 / 拖拽落区 ---------- */
+.loading-skeleton {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+  width: 100%;
+}
+.skeleton-card {
+  width: 340px;
+  padding: 15px;
+  background: #14141e;
+  border-radius: 10px;
+  border: 1px solid #222233;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skeleton-img {
+  width: 100%;
+  height: 200px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #1a1a2a 25%, #222238 50%, #1a1a2a 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-line {
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #1a1a2a 25%, #222238 50%, #1a1a2a 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-line.short {
+  width: 60%;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: #666677;
+}
+.empty-icon {
+  font-size: 48px;
+  margin: 0 0 12px 0;
+}
+.empty-title {
+  font-size: 16px;
+  color: #8888a0;
+  margin: 0 0 6px 0;
+}
+.empty-hint {
+  font-size: 13px;
+  color: #555566;
+  margin: 0;
+}
+
+.drop-zone-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(108, 142, 227, 0.12);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.drop-zone-hint p {
+  font-size: 20px;
+  color: #6c8ee3;
+  font-weight: 600;
 }
 
 /* ---------- Tag group ---------- */

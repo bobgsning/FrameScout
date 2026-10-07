@@ -4,6 +4,7 @@
  */
 import { ref, onMounted, onUnmounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
+import { t } from '@/i18n'
 import type { EngineStatusPayload, EngineStatusValue } from '@/types/license'
 import { useSmartFolders } from './useSmartFolders'
 
@@ -11,8 +12,8 @@ import { useSmartFolders } from './useSmartFolders'
 const engineReady = ref(false)
 const engineStatus = ref<EngineStatusValue>('connecting')
 const engineRetry = ref(0)
-const engineMaxRetries = ref(50)
-const engineMessage = ref('Connecting to AI engine...')
+const engineMaxRetries = ref(30)
+const engineMessage = ref(t('splash.connecting'))
 
 let unlistenEngineStatus: (() => void) | null = null
 
@@ -26,9 +27,11 @@ export function useEngineStatus() {
     lifecycleBound = true
 
     onMounted(async () => {
-      // 清理历史遗留的本地缓存（智能文件夹已改为后端持久化）
+      // 清理历史遗留的智能文件夹缓存（已改为后端持久化）。
+      // **不再清除 folder_path**（P1-5 修复）：旧实现每次启动都删 folder_path，
+      // 导致用户每天重开 App 都要重新粘贴素材库路径。现在 folder_path 由
+      // usePreferences 持久化管理，重开 App 自动回填。
       localStorage.removeItem('framescout_smart_folders')
-      localStorage.removeItem('framescout_folder_path')
 
       unlistenEngineStatus = await listen<EngineStatusPayload>('engine-status', (event) => {
         const payload = event.payload
@@ -42,7 +45,7 @@ export function useEngineStatus() {
           case 'connecting':
             engineStatus.value = 'connecting'
             engineRetry.value = payload.retry ?? 0
-            engineMaxRetries.value = payload.max_retries ?? 50
+            engineMaxRetries.value = payload.max_retries ?? 30
             engineMessage.value = payload.message
             break
           case 'error':

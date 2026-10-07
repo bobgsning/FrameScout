@@ -14,12 +14,12 @@ const emit = defineEmits<{
       <use href="#framescout-logo" />
     </svg>
 
-    <h1 class="brand-header">FrameScout — Offline AI Search: Global Edition</h1>
+    <h1 class="brand-header">{{ $t('header.title') }}</h1>
 
     <!-- License status button (right-aligned) -->
     <div class="license-badge" @click="emit('open-license')">
-      <span v-if="isPro" class="badge-pro">💎 Pro Edition</span>
-      <span v-else class="badge-trial">⚡ Trial Mode</span>
+      <span v-if="isPro" class="badge-pro">{{ $t('header.proEdition') }}</span>
+      <span v-else class="badge-trial">{{ $t('header.trialMode') }}</span>
     </div>
   </div>
 </template>

@@ -27,8 +27,3 @@ export interface ScanProgressPayload {
   total: number
   new_files?: string[]
 }
-
-export interface CleanGhostsResult {
-  removed_count: number
-  removed_paths: string[]
-}

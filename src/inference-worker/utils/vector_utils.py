@@ -3,7 +3,19 @@
 
 SigLIP 2 base 输出为 768 维，本项目的向量库（FrameResult.vector）
 与 Rust 端索引均按 768 维设计，因此这里做强制维度收敛。
+
+⚠️ 跨进程字节序约定（v3.2.0 工程纪律，写死）：
+   SQLite 的 `frame_vectors.vector_f32` BLOB 一律是
+   **小端序（little-endian）平面 f32 字节布局**，768 维 = 3072 字节，
+   无 header、无 padding、无维度信息。
+     · Rust 侧：src-tauri/src/storage/vector_blob.rs（encode/decode）
+     · Python 侧：本文件的 pack_f32_le / unpack_f32_le
+   当前由 Rust 侧入库（Python 只经 protobuf 传 `repeated float`），
+   但若将来改成 Python 直写 BLOB，必须走 pack_f32_le，禁止手写 struct.pack。
+   字节序不一致不报错、只是检索结果全错，是最难查的隐性坑。
 """
+import struct
+
 import numpy as np
 
 
@@ -37,3 +49,23 @@ def format_vector_output(raw_vec, target_dim=768):
         arr = arr.reshape(arr.shape[0], -1, target_dim).mean(axis=1)
 
     return arr.tolist()
+
+
+def pack_f32_le(vector: list[float], dim: int = 768) -> bytes:
+    """
+    把一条 float 向量打包成「小端序平面 f32」字节，与 Rust 侧
+    `vector_blob::encode_f32_le` 严格等价。
+
+    `<{}f` 中的 `<` 即 little-endian；`dim` 用于校验长度，不符即抛错
+    （宁可早失败，也不要静默写入维度错误的向量）。
+    """
+    if len(vector) != dim:
+        raise ValueError(f"vector dim mismatch: expected {dim}, got {len(vector)}")
+    return struct.pack(f"<{dim}f", *vector)
+
+
+def unpack_f32_le(blob: bytes, dim: int = 768) -> list[float]:
+    """pack_f32_le 的逆操作，与 Rust 侧 `vector_blob::decode_f32_le_checked` 等价。"""
+    if len(blob) != dim * 4:
+        raise ValueError(f"blob size mismatch: expected {dim * 4} bytes, got {len(blob)}")
+    return list(struct.unpack(f"<{dim}f", blob))

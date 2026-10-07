@@ -2,16 +2,21 @@
 # Install with: pip install -r requirements.txt
 
 # Core ML
-# ONNX Runtime (choose one: cpu/gpu or directml)
-onnxruntime>=1.17.0
-# onnxruntime-directml>=1.17.0   # Uncomment for Windows DirectML acceleration
+# ⚠️ 本项目为纯 Windows 发行版，固定使用 DirectML 后端（NVIDIA/AMD/Intel GPU 通用，
+#    基于 DX12，无需用户安装 CUDA/cuDNN）。
+#    不要同时安装其他 onnxruntime 发行包（同名模块会互相覆盖、卸载时互删文件）。
+onnxruntime-directml>=1.24.4
 
-transformers>=4.37.0
+transformers>=4.50,<5       # 锁 4.x（下限 >=4.50）：4.x 对 torch 软依赖，是 -NoTorch 剔除 torch 的前提；4.49 有 SigLIP 2 映射 bug（硬编码 SiglipTokenizer 去加载 GemmaTokenizer，报 vocab_file=None），>=4.50 已修复（实测 4.57.6 无 torch 正常）。
+sentencepiece>=0.2.0        # SigLIP 2(Gemma 文本塔)/BGE-M3(XLM-R) tokenizer 的软依赖，slow tokenizer 路径必需，显式声明避免 --no-deps 漏装。
 Pillow>=10.0.0
 numpy>=1.26.0
 
 # OCR
-easyocr>=1.7.0
+# RapidOCR = 推理执行管线，默认加载 PP-OCRv4 的 ONNX 权重（概念上不是二选一，
+# 而是「RapidOCR 的管线 + PP-OCRv4 的权重」）。相较 EasyOCR：无 PyTorch 依赖、
+# 冷启动更轻、DirectML 为原生主路径、中文截图/字幕场景更稳。
+rapidocr_onnxruntime>=1.3.23
 
 # Computer Vision (headless)
 opencv-python-headless>=4.8.0
@@ -20,5 +25,7 @@ opencv-python-headless>=4.8.0
 pyzmq>=25.0.0
 protobuf>=4.25.0
 
-# Optional: PyTorch (only needed if you plan to run original CLIP or debug)
+# Optional: PyTorch —— worker 推理全走 ONNX(DirectML)，运行时不需要 torch。
+#   打包时用 build_nuitka.ps1 -NoTorch 将 torch/torchvision 整棵剔出产物。
+#   仅 download_models.py --bge 导出 BGE-M3 ONNX 时需要 torch，那是独立的导出环境。
 # torch>=2.0.0

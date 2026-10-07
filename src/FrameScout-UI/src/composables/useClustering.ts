@@ -4,24 +4,31 @@
  */
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import type { ClusterGroup } from '@/types/search'
+import type { ClusterGroup, ClusterResult } from '@/types/search'
 import { useSearch } from './useSearch'
+import { useToast } from './useToast'
+import { t } from '@/i18n'
 
 const isClusteringView = ref(false)
 const clusterThreshold = ref(0.8)
 const clusters = ref<ClusterGroup[]>([])
+/** 债单 B8：因「单帧簇 ≤50」限制而被丢弃的独特帧数（告知而非静默消失） */
+const truncatedSingleFrames = ref(0)
 
 export function useClustering() {
   const { results, fullResultsCache } = useSearch()
 
   async function fetchClusters() {
     try {
-      const res: ClusterGroup[] = await invoke('cluster_similar_images', {
+      const res: ClusterResult = await invoke('cluster_similar_images', {
         threshold: clusterThreshold.value
       })
-      clusters.value = res
+      clusters.value = res.groups
+      truncatedSingleFrames.value = res.truncated_single_frames
     } catch (err) {
-      console.error('Clustering error:', err)
+      // P1-10：聚类失败此前只 console.error，界面纹丝不动；现给可见反馈
+      const { push } = useToast()
+      push(t('cluster.clusterFailed', { err }), 'error')
     }
   }
 
@@ -42,6 +49,7 @@ export function useClustering() {
     isClusteringView,
     clusterThreshold,
     clusters,
+    truncatedSingleFrames,
     toggleClustering,
     fetchClusters
   }

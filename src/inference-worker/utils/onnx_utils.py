@@ -26,30 +26,36 @@ def create_onnx_session(onnx_path):
     检测依据为 get_available_providers()（即当前包的能力），
     优先级 CUDA → DirectML → CPU。在当前 DirectML 发行包下，
     CUDA 分支不会命中，实际为 DirectML GPU 加速 + CPU 兜底。
+
+    **健壮性修复**：旧实现把 DML + CPU 同时塞进 providers 列表，
+    onnxruntime 在 DML 初始化失败（如显存不足 8007000E）时可能长时间
+    卡住而非快速回退 CPU，导致语义搜索请求一直不返回。
+    新实现先单独尝试 GPU provider，失败则捕获异常、明确回退纯 CPU——
+    保证模型加载绝不因 GPU 异常而卡死。
     """
     available_providers = ort.get_available_providers()
-    providers = []
-
-    # CUDA 分支：仅当换装 onnxruntime-gpu 包时才会命中（当前包不含此 EP）
-    if "CUDAExecutionProvider" in available_providers:
-        providers.append("CUDAExecutionProvider")
-        print("🔥 NVIDIA CUDA acceleration enabled!")
-
-    # DirectML 分支：当前发行包（onnxruntime-directml）的正常路径，
-    # 在 Windows 上 NVIDIA / AMD / Intel 的 GPU 均可加速
-    if "DmlExecutionProvider" in available_providers:
-        providers.append("DmlExecutionProvider")
-        print("🔥 DirectML GPU acceleration enabled! (NVIDIA / AMD / Intel)")
-
-    # CPU 始终作为兜底：DirectML 初始化失败或个别算子不支持时自动回退
-    providers.append("CPUExecutionProvider")
 
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-    session = ort.InferenceSession(onnx_path, sess_options, providers=providers)
+    # 先收集可用的 GPU provider
+    gpu_providers = []
+    if "CUDAExecutionProvider" in available_providers:
+        gpu_providers.append("CUDAExecutionProvider")
+    if "DmlExecutionProvider" in available_providers:
+        gpu_providers.append("DmlExecutionProvider")
 
-    # 打印"实际生效"的 provider（session.get_providers 而非请求列表），
-    # 避免"以为在用 GPU、实际静默落到 CPU"却毫无察觉
-    print(f"   Active providers: {session.get_providers()}")
+    # 尝试 GPU：失败（显存不足/驱动问题）则捕获异常，回退纯 CPU
+    if gpu_providers:
+        try:
+            providers = gpu_providers + ["CPUExecutionProvider"]
+            session = ort.InferenceSession(onnx_path, sess_options, providers=providers)
+            print(f"   Active providers: {session.get_providers()}")
+            return session
+        except Exception as e:
+            print(f"⚠️ GPU provider init failed ({e}), falling back to CPU...")
+
+    # 纯 CPU 兜底（绝不因 GPU 异常而卡死/崩溃）
+    session = ort.InferenceSession(onnx_path, sess_options, providers=["CPUExecutionProvider"])
+    print(f"   Active providers (CPU fallback): {session.get_providers()}")
     return session

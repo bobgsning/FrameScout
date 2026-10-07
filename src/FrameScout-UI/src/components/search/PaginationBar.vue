@@ -6,6 +6,14 @@ const props = defineProps<{
   totalPages: number
   totalResults: number
   isShowAllMode: boolean
+  /**
+   * 是否显示「📋 Show All」按钮。
+   * 该按钮的语义是「一次性加载全部已索引媒体」，仅适用于媒体浏览；
+   * 纯文本结果分页与管理面板传 false 隐藏它。
+   */
+  showAllButton?: boolean
+  /** 紧凑模式：用于对话框等空间受限的场景，去掉默认的外边距 */
+  dense?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,14 +39,18 @@ function submitJump() {
 </script>
 
 <template>
-  <div v-if="props.totalResults > 0" class="pagination-wrapper">
+  <div
+    v-if="props.totalResults > 0"
+    class="pagination-wrapper"
+    :class="{ 'pagination-dense': props.dense }"
+  >
     <!-- Show All 模式：只显示状态条与退出按钮 -->
     <div v-if="props.isShowAllMode" class="show-all-bar">
       <span class="show-all-info">
-        📂 Showing all {{ props.totalResults }} files (no pagination)
+        {{ $t('pagination.showingAll', { total: props.totalResults }) }}
       </span>
       <button class="btn btn-secondary btn-sm" @click="emit('exit-show-all')">
-        📄 Paginated View
+        {{ $t('pagination.paginatedView') }}
       </button>
     </div>
 
@@ -48,20 +60,21 @@ function submitJump() {
         :disabled="props.currentPage === 1"
         @click="emit('change-page', -1)"
       >
-        Prev
+        {{ $t('pagination.prev') }}
       </button>
 
       <div class="page-info">
-        <span class="page-current">Page {{ props.currentPage }} / {{ props.totalPages }}</span>
-        <p class="page-total">(Total {{ props.totalResults }} hits)</p>
+        <span class="page-current">{{ $t('pagination.page', { current: props.currentPage, total: props.totalPages }) }}</span>
+        <p class="page-total">{{ $t('pagination.totalHits', { total: props.totalResults }) }}</p>
       </div>
 
       <button
+        v-if="props.showAllButton !== false"
         class="btn btn-show-all"
-        title="Load all indexed files at once"
+        :title="$t('pagination.showAllHint')"
         @click="emit('show-all')"
       >
-        📋 Show All
+        {{ $t('pagination.showAll') }}
       </button>
 
       <button
@@ -69,11 +82,11 @@ function submitJump() {
         :disabled="props.currentPage >= props.totalPages"
         @click="emit('change-page', 1)"
       >
-        Next
+        {{ $t('pagination.next') }}
       </button>
 
       <div class="jump-box">
-        <span>Jump to</span>
+        <span>{{ $t('pagination.jumpTo') }}</span>
         <input
           v-model.number="jumpInput"
           @keyup.enter="submitJump"
@@ -83,7 +96,7 @@ function submitJump() {
           :max="props.totalPages"
           class="jump-input"
         />
-        <button class="btn btn-primary btn-sm" @click="submitJump">GO</button>
+        <button class="btn btn-primary btn-sm" @click="submitJump">{{ $t('pagination.go') }}</button>
       </div>
     </template>
   </div>
@@ -98,6 +111,14 @@ function submitJump() {
   margin-top: 40px;
   padding-bottom: 40px;
   flex-wrap: wrap;
+}
+
+/* 紧凑模式：对话框 / 内嵌列表里不需要那么大的上下留白 */
+.pagination-dense {
+  margin-top: 10px;
+  padding-bottom: 4px;
+  gap: 10px;
+  font-size: 12px;
 }
 
 .page-info {

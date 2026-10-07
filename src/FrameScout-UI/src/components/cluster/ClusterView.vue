@@ -5,11 +5,14 @@ import { getAssetUrl } from '@/utils/media'
 const props = defineProps<{
   clusters: ClusterGroup[]
   threshold: number
+  /** 债单 B8：因「单帧簇 ≤50」限制而被丢弃的独特帧数 */
+  truncatedSingleFrames: number
 }>()
 
 const emit = defineEmits<{
   (e: 'update:threshold', value: number): void
   (e: 'recluster'): void
+  (e: 'open-preview', paths: string[], index: number): void
 }>()
 
 function onThresholdChange(e: Event) {
@@ -20,9 +23,9 @@ function onThresholdChange(e: Event) {
 <template>
   <div class="clustering-container">
     <div class="clustering-header">
-      <h2>🧩 Visual Similarity Clusters</h2>
+      <h2>{{ $t('cluster.title') }}</h2>
       <div class="cluster-controls">
-        <label>Similarity Threshold:</label>
+        <label>{{ $t('cluster.threshold') }}</label>
         <input
           type="range"
           :value="props.threshold"
@@ -32,29 +35,38 @@ function onThresholdChange(e: Event) {
           step="0.05"
         />
         <span>{{ (props.threshold * 100).toFixed(0) }}%</span>
-        <button class="btn btn-secondary btn-sm" @click="emit('recluster')">Re-cluster</button>
+        <button class="btn btn-secondary btn-sm" @click="emit('recluster')">{{ $t('cluster.recluster') }}</button>
       </div>
     </div>
 
     <div v-if="props.clusters.length === 0" class="empty-clusters">
-      <p>No visually similar groups found at current threshold.</p>
-      <p class="empty-hint">Try lowering the similarity threshold to discover more groups.</p>
+      <p>{{ $t('cluster.empty') }}</p>
+      <p class="empty-hint">{{ $t('cluster.emptyHint') }}</p>
     </div>
 
     <div class="cluster-grid">
       <div v-for="group in props.clusters" :key="group.group_id" class="cluster-card">
         <div class="cluster-badge">
-          Group #{{ group.group_id }} ({{ group.member_paths.length }} items)
+          {{ $t('cluster.group', { id: group.group_id, count: group.member_paths.length }) }}
         </div>
         <div class="cluster-thumbnails">
-          <img
+          <div
             v-for="(path, idx) in group.member_paths"
             :key="idx"
-            :src="getAssetUrl(path)"
-            class="cluster-thumb"
-          />
+            class="cluster-thumb-wrap"
+            :class="{ 'is-representative': path === group.representative_path }"
+            :title="path === group.representative_path ? $t('cluster.representative') : $t('cluster.previewHint')"
+            @click="emit('open-preview', group.member_paths, idx)"
+          >
+            <img :src="getAssetUrl(path)" class="cluster-thumb" />
+            <span v-if="path === group.representative_path" class="representative-badge">★</span>
+          </div>
         </div>
       </div>
+    </div>
+
+    <div v-if="props.truncatedSingleFrames > 0" class="truncate-hint">
+      {{ $t('cluster.truncated', { count: props.truncatedSingleFrames }) }}
     </div>
   </div>
 </template>
@@ -130,6 +142,27 @@ function onThresholdChange(e: Event) {
   border: 1px solid #333;
 }
 
+.cluster-thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.cluster-thumb-wrap:hover .cluster-thumb {
+  border-color: #6c8ee3;
+}
+.cluster-thumb-wrap.is-representative .cluster-thumb {
+  border-color: #ffaa33;
+  box-shadow: 0 0 0 2px rgba(255, 170, 51, 0.5);
+}
+.representative-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 13px;
+  color: #ffaa33;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+}
+
 .empty-clusters {
   text-align: center;
   color: #888;
@@ -138,6 +171,16 @@ function onThresholdChange(e: Event) {
   background: rgba(255, 255, 255, 0.02);
   border-radius: 8px;
   border: 1px dashed #333;
+}
+
+.truncate-hint {
+  margin-top: 16px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #ffaa33;
+  background: rgba(255, 170, 51, 0.08);
+  border: 1px dashed rgba(255, 170, 51, 0.3);
+  border-radius: 8px;
 }
 .empty-hint {
   font-size: 12px;
