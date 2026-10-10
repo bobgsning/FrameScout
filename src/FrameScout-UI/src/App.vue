@@ -5,7 +5,7 @@
   Top-level orchestrator: 只负责组装 composables 与组件，不含业务逻辑。
   （原 700+ 行单文件已按 types / utils / styles / composables / components 拆分）
 
-  Copyright (c) 2026 AetherFlow Labs Inc.
+  Copyright (c) 2026 AetherFlow Labs
 -->
 <template>
   <!-- 1. 全局 SVG 资产库（常驻 DOM） -->

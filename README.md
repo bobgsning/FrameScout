@@ -27,7 +27,7 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 
 ---
 
-> **Just want to try it?** Download the latest Windows executable from the [https://github.com/bobgsning/FrameScout/releases](https://github.com/bobgsning/FrameScout/releases) — no installation required. Unzip and run.
+> **Just want to try it?** Download the latest Windows executable from the [releases page](https://github.com/bobgsning/FrameScout/releases) — no installation required. Unzip and run. The prebuilt app includes a free trial of **100 indexed frames** (videos count per extracted frame); the source is fully open under Apache 2.0 — the trial limit lives in the source too, so you're free to modify or remove it and [build your own version](#-quick-start-development).
 
 ---
 
@@ -318,6 +318,7 @@ See `src/inference-worker/BUILD.md` §4 for details.
 ### v3.3 (Planned)
 
 - [ ] Faiss integration for N > 50K
+- [ ] Automatic port fallback (worker retries the next port if binding fails)
 - [ ] Smart-folder condition editor (boolean / time / file-type / seed-image conditions)
 - [ ] FTS5 coverage for OCR / filenames / notes
 - [ ] Partition / batch / date-range search
@@ -354,7 +355,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 FrameScout core is licensed under **Apache License 2.0**. See [LICENSE](LICENSE) for details. Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-© 2026 AetherFlow Labs Inc.
+© 2026 AetherFlow Labs
 
 ---
 

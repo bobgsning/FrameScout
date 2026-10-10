@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 端口冲突修复 (Batch 33 · 5555 → 16666)
+
+1. **服务端口 5555 → 16666**：用户（issue #3）报告引擎无法启动，日志显示
+   `zmq.error.ZMQError: Permission denied (addr='tcp://127.0.0.1:5555')`——其 Windows
+   的 Hyper-V/WSL 把 5555 保留进了 excluded port range，导致 worker 绑定失败。已把
+   worker 与 Rust 侧的端口统一改为 `16666`（`config.py`、`zmq_client.rs`、
+   `engine_monitor.rs`、`benchmark.py` 及文档），避开高频冲突端口。
+2. **长远的彻底方案——端口冲突自动 fallback（记入 v3.3 规划）**：换端口只是降低碰撞
+   概率，并非绝对治本（Windows 保留端口范围是动态分配的，任何端口理论上都可能被保留）。
+   彻底解法是 worker 绑定失败时自动降级到下一个可用端口，并把实际端口回传给 Rust 侧
+   （需扩展通信协议）。此项列为 v3.3「开箱即用健壮性」的长期目标，不在本轮完成。
+
+### 试用限制透明化 (Batch 34 · issue #4 收尾)
+
+1. **README 补试用限制说明**：下载提示处明确「预编译版含 100 帧免费试用、视频按抽帧
+   数计入、源码 Apache 2.0 可自行构建无限制版」，中英同步。回应 issue #4（Seedmanc）：
+   此前文档只写 "Free & open source"、未提前说明试用上限，用户撞顶后误以为是隐瞒。
+2. **试用上限报错口径统一**：`guard.rs` 撞顶报错由 "{} images" 改为 "{} indexed frames"，
+   并把未落地的 "🚀 Upgrade to Pro" 引导改为「开源可自行构建」，与 README 口径一致
+   （此前限制的是帧数 `memory_db.len()`，文案却写 images，视频抽帧会提前触顶）。
+3. **构建配置补全**：`tauri.conf.json` 增加 `build.windows.staticVCRuntime: true`，
+   替代已废弃的 `STATIC_VCRUNTIME` 环境变量写法，消除构建警告。
+
 ## [3.2.0] - 2026-10-08
 
 ### 首次开源发布收尾 (Batch 32 · 发布修复与文档核查)

@@ -101,12 +101,12 @@ python -c "import framescout_pb2; print('framescout_pb2 OK')"
 (.venv) python main.py
 ```
 
-预期：打印日志文件路径 → 加载 processor → 初始化 Vision/Text ONNX → `🚀 AI Worker online! Listening on port 5555...`
+预期：打印日志文件路径 → 加载 processor → 初始化 Vision/Text ONNX → `🚀 AI Worker online! Listening on port 16666...`
 
 冒烟测试（另开终端，发 `PING_ENGINE`）：
 
 ```powershell
-python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connect('tcp://127.0.0.1:5555'); r=framescout_pb2.EncodeRequest(); r.text='PING_ENGINE'; c.send(r.SerializeToString()); print(framescout_pb2.EncodeResponse().ParseFromString(c.recv()))"
+python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connect('tcp://127.0.0.1:16666'); r=framescout_pb2.EncodeRequest(); r.text='PING_ENGINE'; c.send(r.SerializeToString()); print(framescout_pb2.EncodeResponse().ParseFromString(c.recv()))"
 ```
 
 ---
@@ -243,7 +243,7 @@ npm run tauri dev        # 或 npm run dev:pro
 👻 Spawning AI Worker: "..."
 💾 Connecting to local SQLite...
 ✅ Memory matrix loaded!
-🚀 AI Worker online! Listening on port 5555...
+🚀 AI Worker online! Listening on port 16666...
 ```
 
 ---
@@ -251,7 +251,7 @@ npm run tauri dev        # 或 npm run dev:pro
 ## 6. 验证与排错
 
 - **日志路径**：`%TEMP%\FrameScout-Offline_AI_Search-Global\logs\ai_worker_*.log`
-- **端口监听**：`Test-NetConnection -ComputerName 127.0.0.1 -Port 5555`（`TcpTestSucceeded: True` 即通过）
+- **端口监听**：`Test-NetConnection -ComputerName 127.0.0.1 -Port 16666`（`TcpTestSucceeded: True` 即通过）
 - **进程内存**：`ai_worker.exe` 内存稳定在数百 MB 以上说明模型已加载完成
 - **前端 404**：通常是 Vite 已启动但 Tauri 主循环在等 AI Worker；Worker 正常后若仍 404，检查 `tauri.conf.json` 的 `devUrl` 与 Vite 端口一致（默认 `http://localhost:1421`）
 - **无害 WARNING**：`Failed to collect submodules for 'onnxruntime.quantization'`（缺 `onnx`）、`Library nvcuda.dll ... not found`（无 NVIDIA GPU，用 DirectML，正常）

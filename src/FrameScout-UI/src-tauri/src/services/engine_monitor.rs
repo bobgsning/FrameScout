@@ -18,7 +18,7 @@ pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
             }
         };
 
-        if check_socket.connect("tcp://127.0.0.1:5555").is_err() {
+        if check_socket.connect("tcp://127.0.0.1:16666").is_err() {
             std::thread::sleep(std::time::Duration::from_secs(3));
             continue;
         }

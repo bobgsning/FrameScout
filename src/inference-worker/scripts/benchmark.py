@@ -51,7 +51,7 @@ def measure_indexing(library_path: str, scan_mode: str = "all") -> dict:
     ctx = zmq.Context()
     socket = ctx.socket(zmq.REQ)
     socket.set_rcvtimeo(120000)  # 2 分钟超时
-    socket.connect("tcp://127.0.0.1:5555")
+    socket.connect("tcp://127.0.0.1:16666")
 
     # 发送批量编码请求
     req = pb.EncodeRequest()
@@ -87,7 +87,7 @@ def measure_search_latencies(library_path: str, queries: list) -> list:
     ctx = zmq.Context()
     socket = ctx.socket(zmq.REQ)
     socket.set_rcvtimeo(10000)
-    socket.connect("tcp://127.0.0.1:5555")
+    socket.connect("tcp://127.0.0.1:16666")
 
     results = []
     for query in queries:

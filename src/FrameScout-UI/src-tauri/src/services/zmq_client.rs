@@ -31,7 +31,7 @@ pub fn request_vector(
     let context = zmq::Context::new();
     let socket = context.socket(zmq::REQ).map_err(|e| e.to_string())?;
     socket.set_rcvtimeo(timeout_ms).map_err(|e| e.to_string())?;
-    socket.connect("tcp://127.0.0.1:5555").map_err(|e| e.to_string())?;
+    socket.connect("tcp://127.0.0.1:16666").map_err(|e| e.to_string())?;
 
     let req = build_request(payload);
     let mut buf = Vec::new();
@@ -80,7 +80,7 @@ pub fn request_text_dense(text: String, timeout_ms: i32) -> Result<Vec<f32>, Str
     let context = zmq::Context::new();
     let socket = context.socket(zmq::REQ).map_err(|e| e.to_string())?;
     socket.set_rcvtimeo(timeout_ms).map_err(|e| e.to_string())?;
-    socket.connect("tcp://127.0.0.1:5555").map_err(|e| e.to_string())?;
+    socket.connect("tcp://127.0.0.1:16666").map_err(|e| e.to_string())?;
 
     let req = proto::EncodeRequest {
         model: proto::EmbeddingModel::BgeM3Dense as i32,
@@ -112,7 +112,7 @@ pub fn request_text_entry(text: String, source_uri: String) -> Result<(String, V
     // 债单 A13/C7：rcvtimeo -1（无限等待）换 RPC_TIMEOUT_SEARCH_MS——纯文本入库
     // 卡住时快速失败，而非 UI 永久转圈只能杀进程。
     socket.set_rcvtimeo(RPC_TIMEOUT_SEARCH_MS).map_err(|e| e.to_string())?;
-    socket.connect("tcp://127.0.0.1:5555").map_err(|e| e.to_string())?;
+    socket.connect("tcp://127.0.0.1:16666").map_err(|e| e.to_string())?;
 
     let task = proto::TextTask {
         text,

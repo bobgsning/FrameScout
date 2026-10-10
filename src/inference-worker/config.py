@@ -22,7 +22,7 @@ for _stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
 
 # 服务端口
-PORT = 5555
+PORT = 16666
 
 # 特征维度
 EMBEDDING_DIM = 768

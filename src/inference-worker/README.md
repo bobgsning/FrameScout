@@ -1,7 +1,7 @@
 # FrameScout Inference Worker
 
 > Python 推理服务：为 FrameScout 的 Rust/Tauri 核心提供**离线、本地**的多模态特征提取能力。
-> 通过 ZeroMQ + Protobuf（`src/proto/framescout.proto`）与核心通信，默认监听 `tcp://127.0.0.1:5555`。
+> 通过 ZeroMQ + Protobuf（`src/proto/framescout.proto`）与核心通信，默认监听 `tcp://127.0.0.1:16666`。
 
 ---
 
@@ -93,13 +93,13 @@ python main.py
 预期输出（节选）：
 
 ```text
-🚀 AI Worker online! Listening on port 5555...
+🚀 AI Worker online! Listening on port 16666...
 ```
 
 冒烟测试（另开终端，发送 `PING_ENGINE`）：
 
 ```powershell
-python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connect('tcp://127.0.0.1:5555'); r=framescout_pb2.EncodeRequest(); r.text='PING_ENGINE'; c.send(r.SerializeToString()); print(framescout_pb2.EncodeResponse().ParseFromString(c.recv()))"
+python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connect('tcp://127.0.0.1:16666'); r=framescout_pb2.EncodeRequest(); r.text='PING_ENGINE'; c.send(r.SerializeToString()); print(framescout_pb2.EncodeResponse().ParseFromString(c.recv()))"
 ```
 
 ---
@@ -134,7 +134,7 @@ python scripts/benchmark.py --library <测试库路径> --output benchmarks
 ```
 
 测量索引耗时（按文件数 / 帧数）+ 三种搜索查询的延迟（P50 / P95 / mean），输出 `benchmarks/YYYY-MM-DD.json`。
-需先启动 FrameScout App（拉起 `ai_worker`，监听 `tcp://127.0.0.1:5555`）；脚本直连 ZMQ 端口测索引与查询延迟。
+需先启动 FrameScout App（拉起 `ai_worker`，监听 `tcp://127.0.0.1:16666`）；脚本直连 ZMQ 端口测索引与查询延迟。
 
 ---
 
@@ -173,7 +173,7 @@ Nuitka 把 Python 编译成机器码，**无 Temp 解压延时、体积瘦 30~50
 | --- | --- |
 | 启动报 `ImportError: No module named 'media'` | Nuitka 脚本已自动收集子模块；仅 PyInstaller（legacy）需加 `--collect-submodules "media"` |
 | onnxruntime DLL 缺失 | Nuitka 脚本已 `--include-data-dir` 整个 `onnxruntime\capi`；仅 PyInstaller 需手动 `--add-binary` |
-| 端口 5555 未监听 | `Test-NetConnection 127.0.0.1 -Port 5555` 验证；检查 worker 是否真正 `online` |
+| 端口 16666 未监听 | `Test-NetConnection 127.0.0.1 -Port 16666` 验证；检查 worker 是否真正 `online` |
 | RapidOCR 首次很慢 | 首次构建 reader 并加载检测/识别模型属正常，后续命中缓存 |
 | 启动时 `DmlExecutionProvider ... 8007000E` 异常 | GPU 显存不足。`utils/onnx_utils.py` 会捕获该异常并**自动回退纯 CPU**（打印 `Active providers (CPU fallback)`），功能不受影响、仅降速 |
 | 搜索一直加载 | 旧版 RPC 无限等待超时已修复（v3.2.0 起分类超时 5s/10s）；若仍卡，检查 worker 日志确认模型是否成功加载 |

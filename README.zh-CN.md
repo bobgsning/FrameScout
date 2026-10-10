@@ -27,7 +27,7 @@ FrameScout 是一个**完全离线、由 AI 驱动的视觉搜索引擎**，面�
 
 ---
 
-> **只想上手试试？** 从 [https://github.com/bobgsning/FrameScout/releases](https://github.com/bobgsning/FrameScout/releases) 下载最新的 Windows 可执行文件即可，无需安装。解压后直接运行。
+> **只想上手试试？** 从 [下载页](https://github.com/bobgsning/FrameScout/releases) 下载最新的 Windows 可执行文件即可，无需安装。解压后直接运行。预编译版内含 **100 帧**的免费试用额度（视频按抽帧数计入）；源码以 Apache 2.0 完全开放——试用限制同样在源码中，你可以修改或移除它，然后[构建自己的版本](#-快速开始开发)。
 
 ---
 
@@ -316,6 +316,7 @@ cd src/inference-worker
 ### v3.3（规划中）
 
 - [ ] 当 N > 50K 时集成 Faiss
+- [ ] 端口冲突自动 fallback（worker 绑定失败时自动降级到下一个端口）
 - [ ] 智能文件夹条件编辑器（布尔 / 时间 / 文件类型 / 基准图等条件）
 - [ ] FTS5 覆盖 OCR / 文件名 / 笔记
 - [ ] 分区 / 批次 / 时间范围搜索
@@ -352,7 +353,7 @@ FrameScout 基于 Apache 2.0 开源。核心架构、算法与通信协议完全
 
 FrameScout 核心基于 **Apache License 2.0** 授权。详见 [LICENSE](LICENSE)。第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-© 2026 AetherFlow Labs Inc.
+© 2026 AetherFlow Labs
 
 ---
 

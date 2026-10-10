@@ -20,7 +20,7 @@ impl TrialGuard {
         }
         if current_count >= FREE_TRIAL_LIMIT {
             return Err(format!(
-                "You've hit the free trial cap of {} images. 🚀 Upgrade to Pro and index without limits!",
+                "You've reached the free trial cap of {} indexed frames. The source is open (Apache 2.0) — modify or remove the trial limit and build your own version to index without limits.",
                 FREE_TRIAL_LIMIT
             ));
         }
