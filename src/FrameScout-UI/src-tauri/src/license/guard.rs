@@ -1,4 +1,3 @@
-use crate::constants::FREE_TRIAL_LIMIT;
 use super::verifier;
 
 pub struct TrialGuard {
@@ -14,16 +13,10 @@ impl TrialGuard {
         Self { is_pro, user_email }
     }
 
-    pub fn check_limit(&self, current_count: usize) -> Result<(), String> {
-        if self.is_pro {
-            return Ok(());
-        }
-        if current_count >= FREE_TRIAL_LIMIT {
-            return Err(format!(
-                "You've reached the free trial cap of {} indexed frames. The source is open (Apache 2.0) — modify or remove the trial limit and build your own version to index without limits.",
-                FREE_TRIAL_LIMIT
-            ));
-        }
+    /// Indexing is unlimited in this build: the free-trial cap was removed
+    /// (permitted by the Apache 2.0 license). Signature kept so existing call
+    /// sites in `index_cmd.rs` stay unchanged.
+    pub fn check_limit(&self, _current_count: usize) -> Result<(), String> {
         Ok(())
     }
 }
