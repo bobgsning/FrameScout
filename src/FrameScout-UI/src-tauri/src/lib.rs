@@ -150,7 +150,7 @@ pub fn run() {
     // 4. 监听退出事件：应用关闭时自动杀掉 AI Worker 子进程
     app.run(move |_, event| {
         if let RunEvent::Exit = event {
-            let _ = ai_process.kill();
+            services::kill_ai_worker(&mut ai_process);
         }
     });
 }
