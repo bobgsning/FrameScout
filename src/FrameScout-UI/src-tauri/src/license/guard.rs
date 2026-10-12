@@ -1,11 +1,27 @@
+#[cfg(feature = "pro")]
 use crate::constants::FREE_TRIAL_LIMIT;
 use super::verifier;
 
 pub struct TrialGuard {
+    #[cfg_attr(not(feature = "pro"), allow(dead_code))]
     pub is_pro: bool,
     /// 仅在 `pro` 构建中由 `get_license_status` 读取
     #[cfg_attr(not(feature = "pro"), allow(dead_code))]
     pub user_email: String,
+}
+
+#[cfg(all(test, not(feature = "pro")))]
+mod tests {
+    use super::TrialGuard;
+
+    #[test]
+    fn open_source_build_has_no_index_limit() {
+        let guard = TrialGuard {
+            is_pro: false,
+            user_email: String::new(),
+        };
+        assert!(guard.check_limit(usize::MAX).is_ok());
+    }
 }
 
 impl TrialGuard {
@@ -15,6 +31,14 @@ impl TrialGuard {
     }
 
     pub fn check_limit(&self, current_count: usize) -> Result<(), String> {
+        #[cfg(not(feature = "pro"))]
+        {
+            let _ = current_count;
+            return Ok(());
+        }
+
+        #[cfg(feature = "pro")]
+        {
         if self.is_pro {
             return Ok(());
         }
@@ -25,5 +49,6 @@ impl TrialGuard {
             ));
         }
         Ok(())
+        }
     }
 }

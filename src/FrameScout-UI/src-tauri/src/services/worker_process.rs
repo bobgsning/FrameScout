@@ -58,3 +58,17 @@ pub fn spawn_ai_worker() -> Child {
 
     cmd.spawn().expect("❌ Failed to spawn ai_worker")
 }
+
+pub fn terminate_ai_worker(child: &mut Child) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = child.kill();
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "ai_worker.exe", "/T"])
+            .output();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = child.kill();
+    }
+}

@@ -3,6 +3,7 @@
 // =========================================================================
 
 /// 免费试用版最多允许索引的图片/视频帧数量
+#[cfg_attr(not(feature = "pro"), allow(dead_code))]
 pub const FREE_TRIAL_LIMIT: usize = 100;
 
 /// SigLIP 2.0 特征向量维度 (768 维)
@@ -86,3 +87,15 @@ pub const RPC_TIMEOUT_INDEX_BASE_MS: i32 = 60000;
 /// 单帧索引估算耗时（毫秒），用于未来动态计算索引批超时（本轮按批用 BASE_MS 兜底）。
 #[allow(dead_code)]
 pub const RPC_TIMEOUT_INDEX_PER_FRAME_MS: i32 = 250;
+
+#[cfg(test)]
+mod video_extension_tests {
+    use super::VIDEO_EXTENSIONS;
+
+    #[test]
+    fn required_video_containers_are_scannable() {
+        for extension in ["mkv", "avi", "mp4", "mov"] {
+            assert!(VIDEO_EXTENSIONS.contains(&extension));
+        }
+    }
+}

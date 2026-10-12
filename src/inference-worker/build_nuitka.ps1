@@ -83,6 +83,15 @@ if ($ortExit -ne 0 -or ($providers -notmatch "DmlExecutionProvider")) {
 }
 Write-Host "✔ 执行提供器：$providers" -ForegroundColor Green
 
+# FFmpeg 是 OpenCV 无法打开容器/编解码器时的运行时兜底。发布包必须自带，
+# 不能依赖最终用户配置 PATH。
+$ffmpegCommand = Get-Command ffmpeg -ErrorAction SilentlyContinue
+if (-not $ffmpegCommand) {
+    throw "未找到 ffmpeg.exe。请先安装 FFmpeg 并确保它在 PATH 中。"
+}
+$ffmpegSource = $ffmpegCommand.Source
+Write-Host "✔ FFmpeg：$ffmpegSource" -ForegroundColor Green
+
 # ------------------------------------------------------------------
 # 1. 编译
 # ------------------------------------------------------------------
@@ -221,6 +230,8 @@ if (Test-Path $modelsSrc) {
 } else {
     Write-Host "⚠️ 未找到 models\ 目录，跳过模型复制（请手动放置 siglip2-base）。" -ForegroundColor Yellow
 }
+Copy-Item -Force $ffmpegSource (Join-Path $exeDir "ffmpeg.exe")
+Write-Host "✔ FFmpeg fallback 已复制到 worker 输出目录" -ForegroundColor Green
 Write-Host "✔ 产物：$exePath" -ForegroundColor Green
 
 # ------------------------------------------------------------------
@@ -248,6 +259,7 @@ if (-not $SkipDeploy) {
         if (Test-Path (Join-Path $exeDir "models")) {
             Copy-Item -Recurse -Force (Join-Path $exeDir "models") $tauriBin
         }
+        Copy-Item -Force (Join-Path $exeDir "ffmpeg.exe") $tauriBin
     }
     Write-Host "✔ 部署完成" -ForegroundColor Green
 }

@@ -13,6 +13,11 @@ v3.2.0 第三轮 P0-6 / P2-3 改造：
 SCENE_CHANGE_THRESHOLD 即判定场景切换并保留关键帧，其余按 1 FPS 兜底 + 相邻去重。
 """
 import os
+import shutil
+import subprocess
+import tempfile
+from itertools import chain
+
 import cv2
 import numpy as np
 
@@ -22,6 +27,7 @@ from config import (
     MAX_FRAMES_PER_VIDEO,
     SCENE_CHANGE_THRESHOLD,
     SIMILAR_FRAME_SKIP_THRESHOLD,
+    get_base_path,
 )
 
 
@@ -29,6 +35,7 @@ from config import (
 # 注意：Rust 侧 src-tauri/src/constants.rs 的 VIDEO_EXTENSIONS 必须与此保持一致，
 # 否则会出现"扫描能枚举到、但 Python 当图片解码失败被跳过"的静默丢帧问题。
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".m4v", ".ts"}
+FFMPEG_FRAME_SIZE = 256
 
 
 def _frame_mean_diff(a: np.ndarray, b: np.ndarray) -> float:
@@ -42,6 +49,120 @@ def _frame_mean_diff(a: np.ndarray, b: np.ndarray) -> float:
     gray_a = cv2.cvtColor(a, cv2.COLOR_RGB2GRAY) if a.ndim == 3 else a
     gray_b = cv2.cvtColor(b, cv2.COLOR_RGB2GRAY) if b.ndim == 3 else b
     return float(np.mean(np.abs(gray_a.astype(np.float32) - gray_b.astype(np.float32))))
+
+
+def _resolve_ffmpeg() -> str:
+    """Find the packaged FFmpeg first, then fall back to PATH for development."""
+    packaged = os.path.join(get_base_path(), "ffmpeg.exe")
+    if os.path.isfile(packaged):
+        return packaged
+    system = shutil.which("ffmpeg")
+    if system:
+        return system
+    raise FileNotFoundError(
+        "FFmpeg fallback is unavailable: ffmpeg.exe was not packaged and ffmpeg is not on PATH"
+    )
+
+
+def _iter_opencv_frames(video_path: str, probe_fps: float, max_duration: float):
+    """Yield regularly sampled RGB frames through OpenCV."""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        cap.release()
+        raise ValueError("OpenCV could not open the video")
+
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if not fps or fps != fps:
+            fps = 25.0
+
+        sec = 0.0
+        yielded = 0
+        step = 1.0 / probe_fps
+        while sec <= max_duration:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(fps * sec))
+            ok, frame = cap.read()
+            if not ok:
+                if yielded == 0:
+                    raise ValueError("OpenCV could not decode the first frame")
+                break
+            yielded += 1
+            yield sec, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            sec += step
+    finally:
+        cap.release()
+
+
+def _iter_ffmpeg_frames(video_path: str, probe_fps: float, max_duration: float):
+    """Yield fixed-size RGB frames from one FFmpeg process."""
+    size = FFMPEG_FRAME_SIZE
+    frame_bytes = size * size * 3
+    vf = (
+        f"fps={probe_fps},"
+        f"scale={size}:{size}:force_original_aspect_ratio=decrease,"
+        f"pad={size}:{size}:(ow-iw)/2:(oh-ih)/2:black"
+    )
+    command = [
+        _resolve_ffmpeg(),
+        "-nostdin",
+        "-v",
+        "error",
+        "-i",
+        video_path,
+        "-t",
+        str(max_duration),
+        "-an",
+        "-sn",
+        "-dn",
+        "-vf",
+        vf,
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "pipe:1",
+    ]
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    with tempfile.TemporaryFile() as error_file:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=error_file,
+            creationflags=creation_flags,
+        )
+        if process.stdout is None:
+            process.kill()
+            raise ValueError("FFmpeg stdout pipe was not created")
+
+        yielded = 0
+        try:
+            while True:
+                data = bytearray()
+                while len(data) < frame_bytes:
+                    chunk = process.stdout.read(frame_bytes - len(data))
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                if not data:
+                    break
+                if len(data) != frame_bytes:
+                    raise ValueError("FFmpeg returned a truncated video frame")
+                frame = np.frombuffer(data, dtype=np.uint8).reshape(size, size, 3).copy()
+                yield yielded / probe_fps, frame
+                yielded += 1
+
+            return_code = process.wait()
+            error_file.seek(0)
+            error = error_file.read().decode("utf-8", errors="replace").strip()
+            if yielded == 0 or return_code != 0:
+                raise ValueError(
+                    f"FFmpeg could not decode video: {error or 'no frames returned'}"
+                )
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            process.stdout.close()
 
 
 def extract_video_frames(
@@ -69,82 +190,50 @@ def extract_video_frames(
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video not found: {video_path}")
 
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise ValueError(f"Cannot open video (corrupted or unsupported codec): {video_path}")
-
+    base_step = 1.0 / extract_fps
+    probe_fps = extract_fps * 4.0
     try:
-        # 某些容器/编码会读到 fps=0 或 NaN，此时按 25fps 兜底
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        if not fps or fps != fps:  # 处理 NaN / 0
-            fps = 25.0
+        opencv_frames = _iter_opencv_frames(video_path, probe_fps, max_duration)
+        first = next(opencv_frames)
+        raw_frames = chain([first], opencv_frames)
+    except (StopIteration, ValueError) as opencv_error:
+        print(f"⚠️ OpenCV decode failed, using FFmpeg fallback: {opencv_error}")
+        raw_frames = _iter_ffmpeg_frames(video_path, probe_fps, max_duration)
 
-        sec = 0.0
-        base_step = 1.0 / extract_fps          # 兜底采样间隔（默认 1s）
-        probe_step = base_step / 4.0           # 场景检测探测间隔（默认 0.25s，4x 密度）
-        yielded = 0
-        prev_frame = None  # 上一次实际 yield 出去的帧，用于相邻去重与场景检测
-        last_yield_sec = -base_step            # 上次兜底采样的时间戳
+    yielded = 0
+    prev_frame = None
+    last_yield_sec = -base_step
 
-        while True:
-            frame_id = int(fps * sec)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-            ret, frame = cap.read()
-            if not ret:
+    for sec, frame_rgb in raw_frames:
+        if prev_frame is None:
+            yield sec, frame_rgb
+            yielded += 1
+            prev_frame = frame_rgb
+            last_yield_sec = sec
+            if yielded >= max_frames:
                 break
+            continue
 
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            if prev_frame is None:
-                # 第一帧无条件保留
-                yield (sec, frame_rgb)
-                yielded += 1
-                prev_frame = frame_rgb
-                last_yield_sec = sec
-                if yielded >= max_frames:
-                    break
-                sec += probe_step
-                if sec > max_duration:
-                    break
-                continue
-
-            diff = _frame_mean_diff(prev_frame, frame_rgb)
-
-            # 债单 B9：场景检测真正生效——帧间差超过 SCENE_CHANGE_THRESHOLD 视为
-            # 场景切换（PPT 切页 / 镜头切换），立即保留该关键帧。
-            if diff >= SCENE_CHANGE_THRESHOLD:
-                yield (sec, frame_rgb)
-                yielded += 1
-                prev_frame = frame_rgb
-                last_yield_sec = sec
-                if yielded >= max_frames:
-                    break
-                sec += probe_step
-                if sec > max_duration:
-                    break
-                continue
-
-            # 相邻去重：与上次保留的帧几乎相同，跳过（静止画面的冗余采样）
-            if diff < SIMILAR_FRAME_SKIP_THRESHOLD:
-                sec += probe_step
-                if sec > max_duration:
-                    break
-                continue
-
-            # 中间地带（轻微变化）：按 base_step 兜底采样，避免漏采
-            if sec - last_yield_sec >= base_step:
-                yield (sec, frame_rgb)
-                yielded += 1
-                prev_frame = frame_rgb
-                last_yield_sec = sec
-                if yielded >= max_frames:
-                    break
-
-            sec += probe_step
-            if sec > max_duration:
+        diff = _frame_mean_diff(prev_frame, frame_rgb)
+        if diff >= SCENE_CHANGE_THRESHOLD:
+            yield sec, frame_rgb
+            yielded += 1
+            prev_frame = frame_rgb
+            last_yield_sec = sec
+            if yielded >= max_frames:
                 break
-    finally:
-        cap.release()
+            continue
+
+        if diff < SIMILAR_FRAME_SKIP_THRESHOLD:
+            continue
+
+        if sec - last_yield_sec >= base_step:
+            yield sec, frame_rgb
+            yielded += 1
+            prev_frame = frame_rgb
+            last_yield_sec = sec
+            if yielded >= max_frames:
+                break
 
 
 def extract_video_frames_list(

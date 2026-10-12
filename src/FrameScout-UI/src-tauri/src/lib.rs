@@ -39,6 +39,9 @@ use tauri::RunEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    configure_zmq_temp_dir();
+
     // 1. 启动 Python AI Worker 推理子进程
     let mut ai_process = services::spawn_ai_worker();
 
@@ -149,7 +152,19 @@ pub fn run() {
     // 4. 监听退出事件：应用关闭时自动杀掉 AI Worker 子进程
     app.run(move |_, event| {
         if let RunEvent::Exit = event {
-            let _ = ai_process.kill();
+            services::terminate_ai_worker(&mut ai_process);
         }
     });
+}
+
+#[cfg(target_os = "windows")]
+fn configure_zmq_temp_dir() {
+    let public_dir = std::env::var_os("PUBLIC")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Users\Public"));
+    let zmq_temp = public_dir.join("FrameScoutTemp");
+    if std::fs::create_dir_all(&zmq_temp).is_ok() {
+        std::env::set_var("TMP", &zmq_temp);
+        std::env::set_var("TEMP", &zmq_temp);
+    }
 }

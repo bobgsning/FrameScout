@@ -72,6 +72,13 @@ BGE_MAX_TOKENS = 512
 
 def get_base_path():
     """兼容 PyInstaller 打包和源码运行，返回可执行文件/主模块所在目录。"""
+    # Nuitka onefile extracts Python modules to a temporary directory, while
+    # external models remain next to the original executable.  Nuitka exposes
+    # that installation directory through ``__compiled__.containing_dir``.
+    try:
+        return __compiled__.containing_dir  # type: ignore[name-defined]
+    except NameError:
+        pass
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))

@@ -1,15 +1,45 @@
 // 在独立的后台线程中轮询 Python AI 引擎的存活状态，并向前端发送事件。
 
 use prost::Message;
+use std::net::{SocketAddr, TcpStream};
 use tauri::{AppHandle, Emitter};
 use crate::proto::framescout as proto;
 
 pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
-    let context = zmq::Context::new();
     let mut retries = 0;
     const MAX_RETRIES: u32 = 30;
+    let endpoint: SocketAddr = "127.0.0.1:5555".parse().unwrap();
 
     loop {
+        // A Nuitka one-file worker needs time to extract and load its models.
+        // Creating and dropping ZeroMQ sockets while no server is listening can
+        // abort inside libzmq's Windows poller, so probe the TCP port first.
+        if TcpStream::connect_timeout(&endpoint, std::time::Duration::from_millis(500)).is_err() {
+            retries += 1;
+            let _ = app_handle.emit(
+                "engine-status",
+                serde_json::json!({
+                    "status": "connecting",
+                    "retry": retries,
+                    "max_retries": MAX_RETRIES,
+                    "message": format!("Connecting... attempt {}/{}", retries, MAX_RETRIES)
+                }),
+            );
+            if retries >= MAX_RETRIES {
+                let _ = app_handle.emit(
+                    "engine-status",
+                    serde_json::json!({
+                        "status": "error",
+                        "message": "AI Worker failed to become ready. Please check models and restart."
+                    }),
+                );
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            continue;
+        }
+
+        let context = zmq::Context::new();
         let check_socket = match context.socket(zmq::REQ) {
             Ok(s) => s,
             Err(_) => {
@@ -17,6 +47,11 @@ pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
                 continue;
             }
         };
+
+        // Do not leave a pending connection behind while the one-file worker
+        // is still extracting and loading its models.
+        let _ = check_socket.set_linger(0);
+        let _ = check_socket.set_sndtimeo(3000);
 
         if check_socket.connect("tcp://127.0.0.1:5555").is_err() {
             std::thread::sleep(std::time::Duration::from_secs(3));

@@ -135,6 +135,8 @@ python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connec
 3. 已安装 **Visual Studio Build Tools**（工作负载「使用 C++ 的桌面开发」）。
    脚本用 `--msvc=latest`，会通过 vswhere 自动定位 MSVC（MSVC 对 DirectML/Win32
    兼容性远高于 MinGW，务必不要用 MinGW）。
+4. 已安装 **FFmpeg**，且构建机可通过 `ffmpeg -version` 找到 `ffmpeg.exe`。
+   构建脚本会把它复制到 `ai_worker.exe` 同级目录；最终用户无需配置 FFmpeg 或 PATH。
 
 ### 4.2 脚本替你处理的三个坑（对应战略规划书 7.3）
 
@@ -143,6 +145,7 @@ python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connec
 | ONNX GPU Provider 动态库丢失 | `--include-data-dir=…\onnxruntime\capi=onnxruntime/capi`，把 `onnxruntime.dll` / `onnxruntime_providers_shared.dll` / `DirectML.dll` 整目录打入 |
 | 编译器冲突 | `--msvc=latest` |
 | 模型资源不随 exe 分发 | 编译后把整个 `models\`（siglip2-base + bge-m3）复制到 exe 同级目录 |
+| OpenCV 无法解码部分 MKV/AVI 编解码器 | 把 `ffmpeg.exe` 复制到 worker 同级目录并自动作为后备解码器 |
 
 > **ZMQ 句柄残留**是运行期问题（打包不涉及）：已要求 `server.py` 侧设 `LINGER=0`，
 > 且 Tauri 退出钩子里会 kill worker。此点与打包脚本无关，但验收时需一并确认无野进程。

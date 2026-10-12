@@ -1,6 +1,7 @@
 // 负责 Pro 版本的授权激活与查询授权状态。
 
 use tauri::State;
+#[cfg(feature = "pro")]
 use crate::constants::FREE_TRIAL_LIMIT;
 use crate::model_code::AppState;
 
@@ -59,8 +60,8 @@ pub async fn get_license_status(
     _state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
-        "is_pro": false,
-        "email": "",
-        "limit": FREE_TRIAL_LIMIT,
+        "is_pro": true,
+        "email": "Open Source Edition",
+        "limit": 0,
     }))
 }
