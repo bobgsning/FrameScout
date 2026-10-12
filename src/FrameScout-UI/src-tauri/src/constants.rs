@@ -81,12 +81,12 @@ pub const RPC_TIMEOUT_FILE_TASK_MS: i32 = 10000;
 /// 引擎就绪探测超时（毫秒）。`ping_engine` 用于探测 worker 是否完成模型加载，
 /// 首次启动加载 SigLIP/BGE 模型可能需要数十秒，故给足 90s 长超时。
 pub const RPC_TIMEOUT_PING_MS: i32 = 90000;
-/// 索引批处理超时（毫秒）。批量索引/重索引/OCR 按批（4 个文件）提交，
-/// 单批长视频可能数十秒，60s 兜底；超时即快速失败，不再无限等待（债单 A13）。
+/// 索引批处理基础超时（毫秒）。视频在调用点按最大帧数追加动态预算。
 pub const RPC_TIMEOUT_INDEX_BASE_MS: i32 = 60000;
-/// 单帧索引估算耗时（毫秒），用于未来动态计算索引批超时（本轮按批用 BASE_MS 兜底）。
-#[allow(dead_code)]
+/// 单帧索引估算耗时（毫秒）。
 pub const RPC_TIMEOUT_INDEX_PER_FRAME_MS: i32 = 250;
+/// 与 Python `MAX_FRAMES_PER_VIDEO` 保持一致，用于计算最坏情况的 RPC 预算。
+pub const RPC_INDEX_MAX_FRAMES_PER_VIDEO: i32 = 3600;
 
 #[cfg(test)]
 mod video_extension_tests {

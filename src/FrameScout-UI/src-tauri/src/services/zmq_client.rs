@@ -30,6 +30,7 @@ pub fn request_vector(
 ) -> Result<Vec<EncodedFrame>, String> {
     let context = zmq::Context::new();
     let socket = context.socket(zmq::REQ).map_err(|e| e.to_string())?;
+    socket.set_linger(0).map_err(|e| e.to_string())?;
     socket.set_rcvtimeo(timeout_ms).map_err(|e| e.to_string())?;
     socket.connect("tcp://127.0.0.1:5555").map_err(|e| e.to_string())?;
 

@@ -8,7 +8,10 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
-use crate::constants::{IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, RPC_TIMEOUT_INDEX_BASE_MS};
+use crate::constants::{
+    IMAGE_EXTENSIONS, RPC_INDEX_MAX_FRAMES_PER_VIDEO, RPC_TIMEOUT_INDEX_BASE_MS,
+    RPC_TIMEOUT_INDEX_PER_FRAME_MS, VIDEO_EXTENSIONS,
+};
 use crate::fs_trace;
 use crate::model_code::{AppState, ProgressPayload};
 use crate::proto::framescout as proto;
@@ -18,6 +21,22 @@ use crate::storage::normalize_path;
 use crate::storage::text_store::TextVectorRow;
 use crate::storage::vector_blob::encode_f32_le;
 use crate::time_util::utc_stamp;
+
+fn index_rpc_timeout_ms(paths: &[String]) -> i32 {
+    let video_count = paths
+        .iter()
+        .filter(|path| {
+            let ext = std::path::Path::new(path)
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            VIDEO_EXTENSIONS.contains(&ext.as_str())
+        })
+        .count() as i32;
+    let per_video = RPC_INDEX_MAX_FRAMES_PER_VIDEO.saturating_mul(RPC_TIMEOUT_INDEX_PER_FRAME_MS);
+    RPC_TIMEOUT_INDEX_BASE_MS.saturating_add(video_count.saturating_mul(per_video))
+}
 
 pub async fn process_file_paths_internal(
     app: &AppHandle,
@@ -139,9 +158,23 @@ pub async fn process_file_paths_internal(
         };
         let payload = proto::encode_request::Payload::Batch(batch_payload);
 
-        match request_vector(payload, RPC_TIMEOUT_INDEX_BASE_MS) {
+        let rpc_timeout_ms = index_rpc_timeout_ms(chunk);
+        match request_vector(payload, rpc_timeout_ms) {
             Ok(frames) => {
                 consecutive_failures = 0;
+
+                // Worker обрабатывает файлы независимо и при ошибке декодирования может
+                // вернуть успешный ответ без кадров для конкретного пути. Не выдаём это
+                // за успешное сканирование: сохраняем путь в отчёте как неиндексированный.
+                let returned_paths: std::collections::HashSet<String> = frames
+                    .iter()
+                    .map(|frame| crate::storage::path_key(&frame.path))
+                    .collect();
+                for path in chunk {
+                    if !returned_paths.contains(&crate::storage::path_key(path)) {
+                        failed_paths.push(path.clone());
+                    }
+                }
 
                 let mut db = state.db_conn.lock().unwrap();
                 let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
@@ -403,7 +436,32 @@ pub async fn process_file_paths_internal(
         took
     );
 
+    if added_count == 0 && !failed_paths.is_empty() {
+        return Err(format!(
+            "Indexing failed for {} file(s). See the latest scan report for details.",
+            failed_paths.len()
+        ));
+    }
+
     Ok(added_count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::index_rpc_timeout_ms;
+    use crate::constants::{RPC_TIMEOUT_INDEX_BASE_MS, RPC_TIMEOUT_INDEX_PER_FRAME_MS};
+
+    #[test]
+    fn video_batches_receive_a_frame_based_timeout_budget() {
+        let paths = vec![
+            "C:\\clips\\sample.mkv".to_string(),
+            "C:\\clips\\image.jpg".to_string(),
+        ];
+        assert_eq!(
+            index_rpc_timeout_ms(&paths),
+            RPC_TIMEOUT_INDEX_BASE_MS + 3600 * RPC_TIMEOUT_INDEX_PER_FRAME_MS
+        );
+    }
 }
 
 #[tauri::command]
