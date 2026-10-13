@@ -23,7 +23,9 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 
 > 🆕 **v3.2.0 is here!** A sweeping polish pass across the whole product: normalized hybrid scoring (semantic search no longer drowned out by filename matches), scene-detection video frame extraction, FTS5 fault-tolerant text search, lightbox preview with OCR hit red-boxes, right-click open/reveal/copy, drag-to-search, scan pause/cancel with ETA, multi-select + CSV/Markdown/JSON export, database backup, and a full data-consistency pass. [See changelog](CHANGELOG.md#320---2026-10-08).
 >
-> 🌐 **Bilingual interface**: full English & Simplified Chinese localization, English by default. Switch anytime in **Settings → Language**.
+> 🌐 **Multilingual interface**: 9 UI languages — English, 简体中文, 繁體中文, 日本語, Русский, 한국어, Deutsch, Français, Español — English by default. Switch anytime in **Settings → Language**.
+>
+> 🔤 **Multi-language OCR**: recognition for 4 built-in languages (English, 简体中文, 繁體中文, 日本語) plus 5 on-demand downloadable models (Русский, 한국어, Deutsch, Français, Español), with more coming soon. See [Localization & OCR Languages](#-localization--ocr-languages).
 
 ---
 
@@ -53,7 +55,7 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet — and what
 | FlatVector search is O(N·d) | Will migrate to Faiss/Annoy when N > 50K |
 | No filesystem real-time monitoring | Manual re-scan; inotify/watchdog planned |
 | No LLM-generated captions | Deliberate — would require network access |
-| OCR supports English & Simplified Chinese only | More languages planned (RapidOCR rec-model swap) |
+| OCR supports 4 built-in + 5 downloadable languages (not the full 15 listed yet) | 6 more languages planned (RapidOCR rec-model swap) |
 | OCR on-demand is per-file only | Batch OCR for multiple files planned |
 | PDF/DOCX ingestion not yet supported | Convert to .txt/.md first; text extraction planned |
 | Database backup is one-way (no in-app restore) | Restore by copying the .db back; in-app restore planned |
@@ -72,7 +74,7 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet — and what
 | 🔒 **100% Offline** | No internet required. Models are bundled locally. Your data never leaves your computer. |
 | 💡 **Semantic Search (ONNX + SigLIP 2)** | Type words and find matching images by meaning, not just filenames. |
 | 🖼️ **Image-to-Image Search** | Drop a reference image to find visually similar ones in your library. |
-| 🔍 **OCR Text Search** | Extracts and indexes text from images (English & Simplified Chinese). Search *"receipt from March"* and find it instantly. Supports on-demand OCR on selected files. |
+| 🔍 **OCR Text Search** | Extracts and indexes text from images (English, 简体中文, 繁體中文, 日本語 built-in; more downloadable). Search *"receipt from March"* and find it instantly. Supports on-demand OCR on selected files. |
 | 📋 **Show All Mode** | Load every indexed file. New files are sorted by intake time and always appear at the top. |
 | 🎬 **Video Frame Indexing** | Automatically extracts key frames from videos (scene detection) and indexes them alongside static images. |
 | 🧩 **Visual Clustering** | Discover groups of similar images (duplicates, near-duplicates, burst shots) with one click. |
@@ -87,6 +89,22 @@ FrameScout doesn't just find videos — it pinpoints the **exact timestamp**:
 - **One-Click Instant Seek**: Click any search result to jump directly to that exact second (`01:23:45`) in your video.
 
 ---
+
+## 🌐 Localization & OCR Languages
+
+FrameScout ships with a **9-language interface** and a **three-tier OCR recognition** system, configured in **Settings**:
+
+**Interface language (9)** — switch instantly in *Settings → Language*: English, 简体中文, 繁體中文, 日本語, Русский, 한국어, Deutsch, Français, Español (English by default).
+
+**OCR recognition languages (three tiers)** — pick any combination in the *OCR recognition languages* list:
+
+| Tier | Languages | Notes |
+| ---- | --------- | ----- |
+| 🟢 Built-in recognition | English, 简体中文, 繁體中文, 日本語 | Ship with the app; 繁體中文 & 日本語 models can be deleted |
+| 🔵 Downloadable recognition | Русский, 한국어, Deutsch, Français, Español | Models download on demand with progress, resume, SHA-256 verification & disk-space check; removable anytime |
+| ⚪ Coming soon | Português, Italiano, Polski, Türkçe, Tiếng Việt, Bahasa Indonesia | Planned — shown in the list but not yet available |
+
+OCR recognition models are obtained from the official [RapidAI/RapidOCR](https://github.com/RapidAI/RapidOCR) model library (verified against official SHA-256 hashes) and stored under `models/ocr/`. Language metadata lives in a single source of truth — `src/inference-worker/ocr_manifest.json`.
 
 ## 📁 Repository Structure (Key Directories)
 
@@ -105,7 +123,7 @@ FrameScout/
 └── LICENSE
 ```
 
-> OCR (RapidOCR / PP-OCRv4) weights ship inside the `rapidocr_onnxruntime` wheel — nothing extra to download for English & Simplified Chinese.
+> OCR (RapidOCR / PP-OCRv4) weights ship inside the `rapidocr_onnxruntime` wheel for English & Simplified Chinese. Traditional Chinese & Japanese recognition models are bundled; the rest are downloadable on demand into `models/ocr/`. See [Localization & OCR Languages](#-localization--ocr-languages).
 
 Full directory tree available in [TREE.md](./TREE.md).
 

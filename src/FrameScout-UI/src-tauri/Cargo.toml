@@ -32,6 +32,12 @@ dirs = "6.0.0"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 
+# OCR 多语言模型下载（阶段二）：reqwest(rustls) 流式下载 + 断点续传，sha2 完整性校验，
+# sysinfo 磁盘可用空间检查。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+sha2 = "0.10"
+sysinfo = "0.30"
+
 ed25519-dalek = { version = "2.1.0", optional = true }
 base64 = { version = "0.22.0", optional = true }
 hex = { version = "0.4.3", optional = true }

@@ -1,26 +1,44 @@
 import { createI18n } from 'vue-i18n'
 import en from './locales/en.json'
 import zhCN from './locales/zh-CN.json'
+import zhTW from './locales/zh-TW.json'
+import ja from './locales/ja.json'
+import ru from './locales/ru.json'
+import ko from './locales/ko.json'
+import de from './locales/de.json'
+import fr from './locales/fr.json'
+import es from './locales/es.json'
 
-export const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const
+export const SUPPORTED_LOCALES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ru', 'ko', 'de', 'fr', 'es'] as const
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number]
 
 export const DEFAULT_LOCALE: AppLocale = 'en'
+
+const messages = {
+  en,
+  'zh-CN': zhCN,
+  'zh-TW': zhTW,
+  ja,
+  ru,
+  ko,
+  de,
+  fr,
+  es,
+}
 
 export const i18n = createI18n({
   legacy: false,
   globalInjection: true,
   locale: DEFAULT_LOCALE,
   fallbackLocale: DEFAULT_LOCALE,
-  messages: {
-    en,
-    'zh-CN': zhCN,
-  },
+  messages,
 })
 
 /** 切换 UI 语言；未知值回退到英文。 */
 export function setLocale(locale: string): AppLocale {
-  const next: AppLocale = locale === 'zh-CN' ? 'zh-CN' : 'en'
+  const next: AppLocale = (SUPPORTED_LOCALES as readonly string[]).includes(locale)
+    ? (locale as AppLocale)
+    : DEFAULT_LOCALE
   i18n.global.locale.value = next
   if (typeof document !== 'undefined') {
     document.documentElement.lang = next

@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useScanner } from '@/composables/useScanner'
+import { useOcrLanguages } from '@/composables/useOcrLanguages'
+import type { OcrLanguageInfo } from '@/types/ocr'
 
 const props = defineProps<{
   folderPath: string
   scanMode: string
   enableOcr: boolean
-  ocrLanguages: string
   isScanning: boolean
   isClusteringView: boolean
 }>()
@@ -14,7 +17,6 @@ const emit = defineEmits<{
   (e: 'update:folderPath', value: string): void
   (e: 'update:scanMode', value: string): void
   (e: 'update:enableOcr', value: boolean): void
-  (e: 'update:ocrLanguages', value: string): void
   (e: 'start-scan'): void
   (e: 'index-files'): void
   (e: 'toggle-clustering'): void
@@ -30,6 +32,35 @@ const emit = defineEmits<{
 
 // 目录选择器属于「扫描」域的无状态动作，直接从单例 composable 取
 const { selectFolder } = useScanner()
+const { t } = useI18n()
+
+// OCR 语言多选：目录 + 选中态直接取自 useOcrLanguages（底层是 usePreferences 单例，
+// 与设置页多选列表共享同一份已选语言，互斥逻辑也统一生效）
+const { languages, selected, toggle, isSelected, refresh } = useOcrLanguages()
+
+const dropdownOpen = ref(false)
+
+/** 可选语言：排除规划占位，只列当前有模型的（下载入口在设置页） */
+const selectableLanguages = computed(() =>
+  languages.value.filter((l) => l.tier !== 'planned' && l.available)
+)
+
+function displayName(lang: OcrLanguageInfo): string {
+  return lang.code === 'en_opt' ? t('ocr.langEnOpt') : lang.native
+}
+
+const summary = computed(() =>
+  selected.value
+    .map((code) => {
+      const l = languages.value.find((x) => x.code === code)
+      return l ? displayName(l) : code
+    })
+    .join(', ')
+)
+
+onMounted(() => {
+  refresh()
+})
 </script>
 
 <template>
@@ -72,14 +103,26 @@ const { selectFolder } = useScanner()
             />
             {{ $t('scan.ocr') }}
           </label>
-          <input
-            v-if="props.enableOcr"
-            :value="props.ocrLanguages"
-            @input="emit('update:ocrLanguages', ($event.target as HTMLInputElement).value)"
-            type="text"
-            :placeholder="$t('scan.ocrPlaceholder')"
-            class="custom-input ocr-lang-input"
-          />
+          <!-- OCR 语言下拉多选 -->
+          <div v-if="props.enableOcr" class="lang-multiselect">
+            <button type="button" class="lang-trigger" @click="dropdownOpen = !dropdownOpen">
+              <span class="lang-summary" :class="{ placeholder: !selected.length }">
+                {{ selected.length ? summary : $t('scan.ocrPlaceholder') }}
+              </span>
+              <span class="lang-caret">▾</span>
+            </button>
+            <div v-if="dropdownOpen" class="lang-dropdown">
+              <label v-for="l in selectableLanguages" :key="l.code" class="lang-option">
+                <input
+                  type="checkbox"
+                  :checked="isSelected(l.code)"
+                  @change="toggle(l.code)"
+                />
+                <span class="lang-native">{{ displayName(l) }}</span>
+              </label>
+              <p class="lang-dropdown-hint">{{ $t('scan.ocrMoreHint') }}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -235,10 +278,87 @@ const { selectFolder } = useScanner()
   font-size: 14px;
   white-space: nowrap;
 }
-.ocr-lang-input {
-  width: 140px;
-  padding: 4px 8px;
+.lang-multiselect {
+  position: relative;
+}
+
+.lang-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  min-width: 160px;
+  max-width: 240px;
+  background: #121218;
+  border: 1px solid #333344;
+  border-radius: 6px;
+  color: #fff;
   font-size: 13px;
+  cursor: pointer;
+}
+
+.lang-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.lang-summary.placeholder {
+  color: #666677;
+}
+
+.lang-caret {
+  font-size: 11px;
+  color: #8888a0;
+}
+
+.lang-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 200px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  background: #1c1c2e;
+  border: 1px solid rgba(108, 142, 227, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.lang-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.lang-option:hover {
+  background: rgba(108, 142, 227, 0.12);
+}
+
+.lang-option input[type='checkbox'] {
+  accent-color: #6c8ee3;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.lang-native {
+  font-size: 13px;
+  color: #f0f0f5;
+}
+
+.lang-dropdown-hint {
+  margin: 6px 8px 2px;
+  font-size: 11px;
+  color: #666677;
 }
 
 .bar-row {

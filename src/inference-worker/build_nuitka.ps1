@@ -221,6 +221,16 @@ if (Test-Path $modelsSrc) {
 } else {
     Write-Host "⚠️ 未找到 models\ 目录，跳过模型复制（请手动放置 siglip2-base）。" -ForegroundColor Yellow
 }
+
+# OCR 多语言语言目录 manifest（ocr_manifest.json）是 worker 与 Rust 核心共用的单一
+# 事实源：config.py::get_base_path() 在 frozen 下取 exe 所在目录，因此必须与 exe 同级。
+$manifestSrc = Join-Path $PSScriptRoot "ocr_manifest.json"
+if (Test-Path $manifestSrc) {
+    Copy-Item -Force $manifestSrc (Join-Path $exeDir "ocr_manifest.json")
+    Write-Host "📦 复制 ocr_manifest.json → $exeDir" -ForegroundColor Cyan
+} else {
+    Write-Host "⚠️ 未找到 ocr_manifest.json，跳过复制（多语言 OCR 将降级为默认中英）。" -ForegroundColor Yellow
+}
 Write-Host "✔ 产物：$exePath" -ForegroundColor Green
 
 # ------------------------------------------------------------------
@@ -243,10 +253,13 @@ if (-not $SkipDeploy) {
             Copy-Item -Recurse -Force $_.FullName $tauriBin
         }
     } else {
-        # onefile：单 exe + 同级 models 目录
+        # onefile：单 exe + 同级 models 目录 + 语言目录 manifest
         Copy-Item -Force $exePath $tauriBin
         if (Test-Path (Join-Path $exeDir "models")) {
             Copy-Item -Recurse -Force (Join-Path $exeDir "models") $tauriBin
+        }
+        if (Test-Path (Join-Path $exeDir "ocr_manifest.json")) {
+            Copy-Item -Force (Join-Path $exeDir "ocr_manifest.json") (Join-Path $tauriBin "ocr_manifest.json")
         }
     }
     Write-Host "✔ 部署完成" -ForegroundColor Green

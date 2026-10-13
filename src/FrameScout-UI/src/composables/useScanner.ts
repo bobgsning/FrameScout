@@ -15,7 +15,6 @@ import type {
   SearchResult
 } from '@/types/search'
 import type { ScanProgressPayload } from '@/types/license'
-import { parseLanguages } from '@/utils/api'
 import { useSearch } from './useSearch'
 import { useClustering } from './useClustering'
 import { useToast } from './useToast'
@@ -25,7 +24,7 @@ import { t } from '@/i18n'
 // ---------- 模块级共享状态 ----------
 // P1-5 / 债单 A7：folderPath / scanMode / ocrLanguages 改从 usePreferences 取，
 // 复用其 watch 持久化（localStorage），重开 App 自动回填，不再每次重新粘贴路径。
-const { folderPath, scanMode, ocrLang: ocrLanguages } = usePreferences()
+const { folderPath, scanMode, ocrLanguages } = usePreferences()
 const enableOcr = ref(false)
 
 const isScanning = ref(false)
@@ -114,7 +113,7 @@ export function useScanner() {
         folderPath: folderPath.value,
         scanMode: scanMode.value,
         enableOcr: enableOcr.value,
-        ocrLanguages: parseLanguages(ocrLanguages.value)
+        ocrLanguages: ocrLanguages.value
       })
 
       scanMsg.value =
@@ -162,7 +161,7 @@ export function useScanner() {
       const count: number = await invoke('index_files', {
         filePaths: selected,
         enableOcr: enableOcr.value,
-        ocrLanguages: parseLanguages(ocrLanguages.value)
+        ocrLanguages: ocrLanguages.value
       })
       scanMsg.value = t('scanner.indexed', { count })
 
@@ -239,7 +238,7 @@ export function useScanner() {
         const count: number = await invoke('index_files', {
           filePaths: fresh,
           enableOcr: enableOcr.value,
-          ocrLanguages: parseLanguages(ocrLanguages.value)
+          ocrLanguages: ocrLanguages.value
         })
         notes.push(t('scanner.indexedCount', { count }))
         fresh.forEach((p) => done.add(p))
@@ -249,7 +248,7 @@ export function useScanner() {
         const result = await invoke<ReindexResult>('reindex_files', {
           paths: modified,
           enableOcr: enableOcr.value,
-          ocrLanguages: parseLanguages(ocrLanguages.value)
+          ocrLanguages: ocrLanguages.value
         })
         notes.push(
           t('scanner.reindexed', { count: result?.succeeded?.length ?? 0, frames: result?.replaced_frames ?? 0 })

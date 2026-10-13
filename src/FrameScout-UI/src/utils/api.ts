@@ -27,15 +27,13 @@ export async function saveNote(path: string, note: string, timestamp?: number): 
 /**
  * 对单个结果即时跑 OCR
  * @param item          目标结果（就地修改 ocrRunning 标记）
- * @param fallbackLangs 卡片未单独指定语言时，回退到扫描栏的全局语言设置
+ * @param fallbackLangs 卡片未单独指定语言时，回退到扫描栏的全局语言设置（数组）
  */
-export async function runOcrForItem(item: SearchResult, fallbackLangs: string): Promise<void> {
+export async function runOcrForItem(item: SearchResult, fallbackLangs: string[]): Promise<void> {
   const { push, localizeError } = useToast()
-  const raw = item.ocrLangInput || fallbackLangs
-  const langs = raw
-    .split(',')
-    .map((l) => l.trim())
-    .filter(Boolean)
+  const langs = item.ocrLangInput
+    ? item.ocrLangInput.split(',').map((l) => l.trim()).filter(Boolean)
+    : fallbackLangs
 
   if (langs.length === 0) {
     push(t('api.ocrLangRequired'), 'warning')
@@ -59,12 +57,4 @@ export async function runOcrForItem(item: SearchResult, fallbackLangs: string): 
   } finally {
     item.ocrRunning = false
   }
-}
-
-/** 统一的语言串解析："en, ch_sim" -> ["en", "ch_sim"] */
-export function parseLanguages(input: string): string[] {
-  return input
-    .split(',')
-    .map((l) => l.trim())
-    .filter(Boolean)
 }

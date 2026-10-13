@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "comment": "FrameScout OCR 语言目录 —— 单一事实源。语言按 tier 分三档：builtin_wheel（随 rapidocr_onnxruntime wheel 内置，不可删）、builtin_bundle（随安装包内置，可删）、downloadable（用户按需下载，可删）、planned（规划占位，仅显示）。识别模型与字典均来自 RapidAI/RapidOCR 官方模型库（ModelScope），SHA256 与官方 default_models.yaml 逐项核对。urls 为有序列表：优先官方镜像，后续可追加自建镜像兜底。",
+  "source": "RapidAI/RapidOCR official model library (ModelScope)",
+  "source_version": "v3.10.0",
+  "languages": [
+    {
+      "code": "en",
+      "native": "English",
+      "tier": "builtin_wheel",
+      "deletable": false
+    },
+    {
+      "code": "ch_sim",
+      "native": "简体中文",
+      "tier": "builtin_wheel",
+      "deletable": false
+    },
+    {
+      "code": "ch_tra",
+      "native": "繁體中文",
+      "tier": "builtin_bundle",
+      "deletable": true,
+      "rec_model": "chinese_cht_PP-OCRv3_rec_mobile.onnx",
+      "rec_dict": "chinese_cht_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/chinese_cht_PP-OCRv3_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/chinese_cht_PP-OCRv3_rec_mobile/chinese_cht_dict.txt"
+      ],
+      "sha256": "779656d044ce388045e02ea9244724616194e63928606436cdfc6dc3c9528cc6"
+    },
+    {
+      "code": "ja",
+      "native": "日本語",
+      "tier": "builtin_bundle",
+      "deletable": true,
+      "rec_model": "japan_PP-OCRv4_rec_mobile.onnx",
+      "rec_dict": "japan_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/japan_PP-OCRv4_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/japan_PP-OCRv4_rec_mobile/japan_dict.txt"
+      ],
+      "sha256": "e1075a67dba758ecfc7ebc78a10ae61c95ac8fb66a9c86fab5541e33f085cb7a"
+    },
+    {
+      "code": "en_opt",
+      "native": "English (optimized)",
+      "tier": "downloadable",
+      "deletable": true,
+      "rec_model": "en_PP-OCRv4_rec_mobile.onnx",
+      "rec_dict": "en_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/en_PP-OCRv4_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/en_PP-OCRv4_rec_mobile/en_dict.txt"
+      ],
+      "sha256": "e8770c967605983d1570cdf5352041dfb68fa0c21664f49f47b155abd3e0e318"
+    },
+    {
+      "code": "ru",
+      "native": "Русский",
+      "tier": "downloadable",
+      "deletable": true,
+      "rec_model": "cyrillic_PP-OCRv3_rec_mobile.onnx",
+      "rec_dict": "cyrillic_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/cyrillic_PP-OCRv3_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/cyrillic_PP-OCRv3_rec_mobile/cyrillic_dict.txt"
+      ],
+      "sha256": "1efb65bdc460af1c0e8733d005b20952b17ca5aac10ddb56c968333791c5eaa3"
+    },
+    {
+      "code": "ko",
+      "native": "한국어",
+      "tier": "downloadable",
+      "deletable": true,
+      "rec_model": "korean_PP-OCRv4_rec_mobile.onnx",
+      "rec_dict": "korean_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/korean_PP-OCRv4_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/korean_PP-OCRv4_rec_mobile/korean_dict.txt"
+      ],
+      "sha256": "ab151ba9065eccd98f884cf4d927db091be86137276392072edd4f9d43ad7426"
+    },
+    {
+      "code": "de",
+      "native": "Deutsch",
+      "tier": "downloadable",
+      "deletable": true,
+      "rec_model": "latin_PP-OCRv3_rec_mobile.onnx",
+      "rec_dict": "latin_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/latin_PP-OCRv3_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/latin_PP-OCRv3_rec_mobile/latin_dict.txt"
+      ],
+      "sha256": "e9d7a33667e8aaa702862975186adf2012e3f390cc0f9422865957125f8071cf"
+    },
+    {
+      "code": "fr",
+      "native": "Français",
+      "tier": "downloadable",
+      "deletable": true,
+      "rec_model": "latin_PP-OCRv3_rec_mobile.onnx",
+      "rec_dict": "latin_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/latin_PP-OCRv3_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/latin_PP-OCRv3_rec_mobile/latin_dict.txt"
+      ],
+      "sha256": "e9d7a33667e8aaa702862975186adf2012e3f390cc0f9422865957125f8071cf"
+    },
+    {
+      "code": "es",
+      "native": "Español",
+      "tier": "downloadable",
+      "deletable": true,
+      "rec_model": "latin_PP-OCRv3_rec_mobile.onnx",
+      "rec_dict": "latin_dict.txt",
+      "urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv4/rec/latin_PP-OCRv3_rec_mobile.onnx"
+      ],
+      "dict_urls": [
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv4/rec/latin_PP-OCRv3_rec_mobile/latin_dict.txt"
+      ],
+      "sha256": "e9d7a33667e8aaa702862975186adf2012e3f390cc0f9422865957125f8071cf"
+    },
+    {
+      "code": "pt",
+      "native": "Português",
+      "tier": "planned",
+      "deletable": false
+    },
+    {
+      "code": "it",
+      "native": "Italiano",
+      "tier": "planned",
+      "deletable": false
+    },
+    {
+      "code": "pl",
+      "native": "Polski",
+      "tier": "planned",
+      "deletable": false
+    },
+    {
+      "code": "tr",
+      "native": "Türkçe",
+      "tier": "planned",
+      "deletable": false
+    },
+    {
+      "code": "vi",
+      "native": "Tiếng Việt",
+      "tier": "planned",
+      "deletable": false
+    },
+    {
+      "code": "id",
+      "native": "Bahasa Indonesia",
+      "tier": "planned",
+      "deletable": false
+    }
+  ]
+}

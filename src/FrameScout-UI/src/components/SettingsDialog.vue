@@ -17,6 +17,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { open } from '@tauri-apps/plugin-dialog'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import OcrLanguageList from '@/components/OcrLanguageList.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -26,7 +27,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { folderPath, pageSize, ocrLang, language, exportPath } = usePreferences()
+const { folderPath, pageSize, language, exportPath } = usePreferences()
 const { push } = useToast()
 const { t } = useI18n()
 
@@ -131,14 +132,17 @@ async function openBackupDir(b: BackupInfo) {
   }
 }
 
-// 常用 OCR 语言选项（P1-8：label 改走 i18n，此前硬编码导致 6 个 settings.ocrLang* key 全死）
-const ocrLangOptions = [
-  { value: 'en', labelKey: 'settings.ocrLangEn' },
-  { value: 'ch_sim', labelKey: 'settings.ocrLangChSim' },
-  { value: 'en,ch_sim', labelKey: 'settings.ocrLangEnChSim' },
-  { value: 'ja', labelKey: 'settings.ocrLangJa' },
-  { value: 'ko', labelKey: 'settings.ocrLangKo' },
-  { value: 'en,ja', labelKey: 'settings.ocrLangEnJa' },
+// 界面语言选项（国际化扩展：9 种界面语言，母语名显示）
+const languageOptions = [
+  { value: 'en', labelKey: 'settings.languageEn' },
+  { value: 'zh-CN', labelKey: 'settings.languageZhCN' },
+  { value: 'zh-TW', labelKey: 'settings.languageZhTW' },
+  { value: 'ja', labelKey: 'settings.languageJa' },
+  { value: 'ru', labelKey: 'settings.languageRu' },
+  { value: 'ko', labelKey: 'settings.languageKo' },
+  { value: 'de', labelKey: 'settings.languageDe' },
+  { value: 'fr', labelKey: 'settings.languageFr' },
+  { value: 'es', labelKey: 'settings.languageEs' },
 ]
 
 // P1-9：与搜索栏统一取值集合（三处收敛为一套）
@@ -167,8 +171,9 @@ function clearFolderPath() {
             <label class="setting-label">🌐 {{ $t('settings.language') }}</label>
             <p class="setting-hint">{{ $t('settings.languageHint') }}</p>
             <select v-model="language" class="setting-select">
-              <option value="en">{{ $t('settings.languageEn') }}</option>
-              <option value="zh-CN">{{ $t('settings.languageZhCN') }}</option>
+              <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
+                {{ $t(opt.labelKey) }}
+              </option>
             </select>
           </div>
 
@@ -187,15 +192,10 @@ function clearFolderPath() {
             </div>
           </div>
 
-          <!-- OCR 语言 -->
+          <!-- OCR 识别语言（多选列表，三档分组） -->
           <div class="setting-group">
-            <label class="setting-label">🔤 {{ $t('settings.ocrLang') }}</label>
-            <p class="setting-hint">{{ $t('settings.ocrLangHint') }}</p>
-            <select v-model="ocrLang" class="setting-select">
-              <option v-for="opt in ocrLangOptions" :key="opt.value" :value="opt.value">
-                {{ $t(opt.labelKey) }}
-              </option>
-            </select>
+            <label class="setting-label">🔤 {{ $t('ocr.title') }}</label>
+            <OcrLanguageList />
           </div>
 
           <!-- 每页条数 -->

@@ -143,6 +143,11 @@ pub fn run() {
             // 授权相关命令
             commands::license_cmd::activate_pro_license,
             commands::license_cmd::get_license_status,
+
+            // OCR 多语言模型管理（列表 / 下载 / 删除）
+            commands::model_cmd::list_ocr_languages,
+            commands::model_cmd::download_ocr_model,
+            commands::model_cmd::delete_ocr_model,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri Build Fail");

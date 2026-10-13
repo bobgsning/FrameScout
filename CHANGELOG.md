@@ -4,6 +4,129 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### OCR 扫描栏下拉多选 + i18n 收尾 (Batch 40)
+
+1. **扫描栏 OCR 语言改为下拉多选**：`TopActionBar.vue` 的 OCR 语言由 free-text 输入框
+   （需手敲 `en, ch_sim` 语言码、易错）改为下拉多选，直接复用 `useOcrLanguages` 的
+   语言目录与已选态（底层是 `usePreferences` 单例），与设置页多选列表共享同一份选择、
+   `en_opt` 互斥逻辑统一生效；`App.vue` 移除 `ocr-languages` 的 v-model 透传（改为
+   composable 单例直取，数据流更干净）。
+2. **en_opt 显示名 i18n 化**：新增 `ocr.langEnOpt`（9 语），OCR 语言列表与扫描栏下拉
+   里的 en_opt 随界面语言显示为「英文（优化）/ English (optimized) / …」，其余语言
+   仍用母语名（native）。
+3. **tagline 翻译修正**：9 个非英文 locale 的 `settings.tagline` 前半段
+   「克 · 通 · 隱」（`Restraint · Insight · Privacy` 被误译成三个单字）全部改为
+   正确翻译——ru / ko / de / fr / es 改为对应语言（Сдержанность · Проницательность ·
+   Приватность 等）；zh-CN / zh-TW / ja 改为「克制 · 洞察 · 隐私」「克制 · 洞察 ·
+   隱私」「克己 · 洞察 · プライバシー」。
+
+**验证**：`npm run type-check` ✅。
+
+### OCR 纯英文优化模型 (Batch 39)
+
+针对「库里是纯英文、不需要中文」的用户，新增一个**纯英文优化识别模型**的可下载选项：
+
+1. **`ocr_manifest.json` 新增 `en_opt` 语言项**（`en_PP-OCRv4_rec_mobile.onnx` +
+   `en_dict.txt`，`tier: downloadable`）：与内置的 `en`（中英合并模型）区分开——纯英文
+   模型的字符集只有约 95 类（字母/数字/标点），相比中英合并模型的 ~6600 类，对形近字
+   （`l`/`1`、`O`/`0`）误识率更低，代价是**认不了中文**。文件名与 SHA256 取自官方
+   RapidAI/RapidOCR `default_models.yaml`（ModelScope v3.10.0），并反向核对了 manifest
+   里既有 ch_tra/ja/ko/cyrillic/latin 的哈希均无误。
+2. **识别策略互斥**（`useOcrLanguages.ts::toggle`）：`en_opt`（纯英文模型）与
+   `en`/`ch_sim`（中英合并模型）互斥——勾选一方自动取消另一方，避免英文文本被两种
+   模型重复识别。
+3. **文档**：`OCR_MULTILANG.md` 补「纯英文选项 + 场景选型」章节，明确「每个非英文
+   多语言模型的字典都已内建拉丁字母+数字，故 X 语言+混排英文由 X 模型单模型覆盖；
+   唯「纯英文」场景才需要专门的 `en_opt`」。
+
+**验证**：`npm run type-check` ✅ · manifest 16 语言解析通过 · worker 侧
+`available_languages()` 对未下载的 `en_opt` 正确排除、`_group_key('en_opt')='en_opt'`
+独立分组。
+
+### OCR 多语言健壮性收尾 (Batch 38)
+
+真机核对 `rapidocr_onnxruntime 1.4.4` 的多语言加载链路时，确认 `rec_model_path` /
+`rec_keys_path` 两个 kwargs 为官方支持（`parse_parameters.py` 有映射）；同时修掉两个边界问题：
+
+1. **可用性判定补查字典文件**（`engines/ocr_engine.py::_model_files_present`）：此前只
+   检查 rec 模型 `.onnx` 是否存在，未检查字典 `.txt`。而官方 v3.10.0 的 `*_rec_mobile`
+   模型**不内嵌字符表**，字典缺失时 `CTCLabelDecode` 会抛 `character must not be None`
+   ——语言被判「可用」却静默识别失败。现改为 rec 模型与字典**成对校验**，缺失任一
+   即判不可用，前端会提示重新下载而非静默漏识别。
+2. **下载命令幂等化**（`commands/model_cmd.rs::download_ocr_model`）：此前 rec 模型
+   下载成功、字典下载失败后重试，会从头重下 rec（浪费）。现下载前先判文件是否已
+   存在，已存在则跳过，重试只补缺失文件，配合断点续传体验更顺。
+
+另将多语言实现细节与新增语言指引补入 `OCR_MULTILANG.md`（全面重写），并同步更新
+worker `README.md`、`BUILD.md` 的目录结构与打包说明（`ocr_manifest.json` 与
+`models\ocr\` 的分发）。
+
+**验证**：`cargo check` ✅ · worker 侧 `available_languages()` 实测
+`['ch_sim','ch_tra','en','ja']`（en/ch_sim 恒可用、ch_tra/ja 已下载可用、未下载的 ru 正确排除）。
+
+### 国际化扩展与 OCR 多语言识别 — 阶段二 (Batch 37)
+
+兑现「可下载 OCR」的完整机制：用户可在设置页按需下载俄 / 韩 / 德 / 法 / 西五种识别
+模型，含下载进度可视化、失败重试与断点续传、磁盘空间检查、SHA-256 完整性校验、删除，
+模型统一落盘到既有 `models/ocr/` 目录。
+
+1. **Rust 下载命令（`model_cmd.rs` 扩展 + 新依赖）**：新增 `download_ocr_model`；
+   引入 `reqwest`（rustls-tls + stream）、`sha2`、`sysinfo` 三个依赖。下载走「官方
+   镜像优先、自建镜像兜底」（manifest 的 `urls` 有序列表），HTTP Range 断点续传
+   （写 `.part`，失败保留以便续传），下载后 SHA256 校验通过再原子重命名；下载前按
+   目标盘可用空间做检查（`sysinfo`）。
+2. **下载进度事件**：Rust 侧按约 200ms 节流发射 `ocr-download-progress`
+   （语言码 / 已下载 / 总量 / 百分比），前端监听并渲染进度条。
+3. **前端下载交互（`OcrLanguageList.vue` + `useOcrLanguages.ts`）**：可下载语言
+   未下载时显示「下载模型」按钮，下载中显示进度条 + 百分比，失败后按钮变「重试」
+   （断点续传，不从头开始）；内置随包语言（ch_tra/ja）与已下载模型显示删除按钮
+   （二次确认）。下载完成自动刷新列表并 Toast 提示。
+
+**验证**：`npm run type-check` ✅ · `cargo check` ✅（无告警）（但是去除了 SHA256 独立重复校验，下载时已做）。
+
+### 国际化扩展与 OCR 多语言识别 — 阶段一 (Batch 36)
+
+把界面语言从「英 / 简中」扩到 9 种，并把 OCR 识别语言从「英 / 简中」扩展为
+「4 内置 + 5 可下载 + 6 规划占位」三档，设置页由下拉改为多选列表。本批为阶段一：
+i18n + 语言列表 UI + 内置 OCR（可下载 OCR 的下载/校验/续传机制在下一批）。
+
+1. **界面语言 9 种（i18n）**：新增 `zh-TW` / `ja` / `ru` / `ko` / `de` / `fr` / `es`
+   共 7 个语言包（`src/FrameScout-UI/src/i18n/locales/`，每包 522 键、与 en 严格同构），
+   `i18n/index.ts` 的 `SUPPORTED_LOCALES` 与 `setLocale` 由二元判断改为 9 语映射，
+   设置页「语言」下拉扩至 9 项（以母语名显示）。英文仍为默认语言。
+2. **OCR 语言目录单一事实源（`ocr_manifest.json`）**：新增
+   `src/inference-worker/ocr_manifest.json`，集中描述语言码 / 分层（builtin_wheel /
+   builtin_bundle / downloadable / planned）/ rec 模型与字典文件名 / 官方下载 URL /
+   SHA256。识别模型与哈希逐项取自 RapidAI/RapidOCR 官方模型库（ModelScope v3.10.0 的
+   `default_models.yaml`），确保「真官方、无差错」。
+3. **worker 多语言引擎改造**（`engines/ocr_engine.py` + `config.py`）：det/cls 通用、
+   rec 随语言分组——en/ch_sim 共用 wheel 默认权重，其余语言从 `models/ocr/<code>/`
+   加载对应 rec 模型与字典，逐组跑 OCR 后合并行级结果；`SUPPORTED_LANGUAGES` 由硬编码
+   集合改为按「磁盘上 rec 模型是否真实存在」动态判定，下载/删除后无需重启即生效。
+4. **内置繁中 / 日文识别模型（可删）**：ch_tra、ja 作为 `builtin_bundle` 随安装包
+   内置，新增 `scripts/download_ocr_models.py` 从官方源下载并 SHA256 校验；
+   `build_nuitka.ps1` 复制 `ocr_manifest.json` 与 `models\ocr\` 到产物旁。
+5. **Rust 新增模型命令**（`commands/model_cmd.rs` + `services/paths.rs`）：模型路径
+   解析（与 worker `get_base_path()` 同源，避免两份事实漂移）、`list_ocr_languages`
+   返回三档语言与可用性、`delete_ocr_model` 带安全护栏（仅删 `deletable` 语言、
+   只动 `models/ocr/<code>/`）。
+6. **OCR 语言选择器改为多选列表**：设置页下拉 → `OcrLanguageList.vue` 多选列表，
+   三档分组 + 状态徽标（内置识别 / 识别模型可下载（云朵图标）/ 即将推出），支持多语言
+   同时开启；内置的 ch_tra/ja 与已下载模型可删（二次确认）。偏好数据由单值字符串
+   数组化（`usePreferences.ocrLanguages`），并迁移旧 localStorage 逗号串。
+
+**验证**：`npm run type-check` ✅ · `cargo check` ✅（1 处 dead_code 告警为下一批
+下载命令待用字段）。
+
+### worker 源码启动 fallback (Batch 35 · 采纳 PR #5)
+
+1. **worker 启动 fallback**：找不到 `ai_worker.exe` 时（如 `tauri dev` 未做 Nuitka 打包），
+   回退到从 `.venv` 源码直接运行 `main.py`，不再 panic；可用 `FRAMESCOUT_WORKER_PYTHON`
+   环境变量覆盖解释器。
+2. **退出进程树清理**：应用退出时用 `taskkill /F /T` 杀整棵进程树，避免残留子进程占用
+   端口（issue #3 的一类根因）。
+3. **来源**：采纳社区 PR #5（kiwiqq-jpg）的第二个 commit（cherry-pick `9c48533`）。
+
 ### 试用限制透明化 (Batch 34 · issue #4 收尾)
 
 1. **README 补试用限制说明**：下载提示处明确「预编译版含 100 帧免费试用、视频按抽帧

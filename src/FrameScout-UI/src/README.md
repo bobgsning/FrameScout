@@ -19,7 +19,7 @@ src/FrameScout-UI/src/
 │   ├── media.ts                  # isVideo, getAssetUrl (convertFileSrc wrapper), withFrameAnchor
 │   ├── videoTimers.ts            # video load-timeout registry (module-level singleton)
 │   ├── exporters.ts              # exportCSV / exportMarkdown / exportJSON
-│   └── api.ts                    # saveNote, runOcrForItem, parseLanguages
+│   └── api.ts                    # saveNote, runOcrForItem
 │
 ├── styles/                       # 3. Global styles & theme
 │   ├── variables.css             # brand gradients, Pro/Trial theme variables

@@ -11,7 +11,8 @@ import { ref, watch } from 'vue'
 // ---------- 持久化键 ----------
 const KEY_FOLDER_PATH = 'framescout_folder_path'
 const KEY_PAGE_SIZE = 'framescout_page_size'
-const KEY_OCR_LANG = 'framescout_ocr_lang'
+const KEY_OCR_LANG = 'framescout_ocr_lang'          // 旧：逗号分隔字符串（迁移用）
+const KEY_OCR_LANGS = 'framescout_ocr_languages'    // 新：JSON 数组
 const KEY_SCAN_MODE = 'framescout_scan_mode'
 const KEY_SEARCH_HISTORY = 'framescout_search_history'
 const KEY_LANGUAGE = 'framescout_language'
@@ -20,7 +21,7 @@ const KEY_EXPORT_PATH = 'framescout_export_path'
 // ---------- 模块级共享状态 ----------
 const folderPath = ref(loadString(KEY_FOLDER_PATH, ''))
 const pageSize = ref(loadNumber(KEY_PAGE_SIZE, 8))
-const ocrLang = ref(loadString(KEY_OCR_LANG, 'en'))
+const ocrLanguages = ref<string[]>(loadOcrLanguages())
 const scanMode = ref(loadString(KEY_SCAN_MODE, 'all'))
 const searchHistory = ref<string[]>(loadArray(KEY_SEARCH_HISTORY, []))
 // UI 语言：默认英文，中文为第二语言
@@ -55,10 +56,27 @@ function loadArray(key: string, fallback: string[]): string[] {
   }
 }
 
+/** OCR 语言偏好：旧版存逗号分隔字符串，新版存 JSON 数组，此处做一次迁移。 */
+function loadOcrLanguages(): string[] {
+  try {
+    const legacy = localStorage.getItem(KEY_OCR_LANG)
+    if (legacy && !legacy.trimStart().startsWith('[')) {
+      localStorage.removeItem(KEY_OCR_LANG)
+      const arr = legacy.split(',').map((s) => s.trim()).filter(Boolean)
+      if (arr.length) return arr
+    }
+  } catch {
+    // ignore
+  }
+  const arr = loadArray(KEY_OCR_LANGS, ['en'])
+  const filtered = arr.filter((x): x is string => typeof x === 'string')
+  return filtered.length ? filtered : ['en']
+}
+
 // ---------- 自动持久化 ----------
 watch(folderPath, (v) => save(KEY_FOLDER_PATH, v))
 watch(pageSize, (v) => save(KEY_PAGE_SIZE, String(v)))
-watch(ocrLang, (v) => save(KEY_OCR_LANG, v))
+watch(ocrLanguages, (v) => save(KEY_OCR_LANGS, JSON.stringify(v)), { deep: true })
 watch(scanMode, (v) => save(KEY_SCAN_MODE, v))
 watch(searchHistory, (v) => save(KEY_SEARCH_HISTORY, JSON.stringify(v)), { deep: true })
 watch(language, (v) => save(KEY_LANGUAGE, v))
@@ -109,7 +127,7 @@ export function usePreferences() {
   return {
     folderPath,
     pageSize,
-    ocrLang,
+    ocrLanguages,
     scanMode,
     searchHistory,
     language,

@@ -34,7 +34,6 @@
       v-model:folder-path="folderPath"
       v-model:scan-mode="scanMode"
       v-model:enable-ocr="enableOcr"
-      v-model:ocr-languages="ocrLanguages"
       :is-scanning="isScanning"
       :is-clustering-view="isClusteringView"
       @start-scan="startScan"
@@ -637,7 +636,6 @@ const {
   folderPath,
   scanMode,
   enableOcr,
-  ocrLanguages,
   isScanning,
   scanMsg,
   currentStatus,

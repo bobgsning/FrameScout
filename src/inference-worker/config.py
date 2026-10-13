@@ -2,6 +2,7 @@
 全局配置模块：环境变量、端口、维度、路径解析。
 """
 import io
+import json
 import os
 import sys
 import tempfile
@@ -93,6 +94,49 @@ def get_model_dirs():
 def get_bge_dir():
     """返回 BGE-M3 模型目录（tokenizer 文件 + bge_m3_dense.onnx）。"""
     return os.path.join(get_base_path(), "models", "bge-m3")
+
+
+# ------------------------------------------------------------------
+# OCR 多语言语言目录（ocr_manifest.json）
+# ------------------------------------------------------------------
+# 单一事实源：语言码 / 分层（内置/可下载/规划）/ rec 模型与字典文件名 /
+# 官方下载 URL 与 SHA256 全部集中在这份 manifest 里，由 worker、Rust 核心、
+# 前端三处共同消费，避免多份硬编码漂移。
+_ocr_manifest_cache: dict | None = None
+
+
+def get_ocr_manifest_path() -> str:
+    """返回 ocr_manifest.json 的绝对路径（worker 根目录，随打包复制）。"""
+    return os.path.join(get_base_path(), "ocr_manifest.json")
+
+
+def load_ocr_manifest(force_reload: bool = False) -> dict:
+    """
+    加载并解析 ocr_manifest.json，返回形如：
+        {
+          "schema_version": 1,
+          "languages": [ {code, native, tier, deletable, rec_model?, rec_dict?, urls?, ...}, ... ]
+        }
+    结果带内存缓存；manifest 缺失时返回空的语言列表（不崩 worker，OCR 降级为
+    默认中英权重，与「缺失模型不致命」的既有口径一致）。
+    """
+    global _ocr_manifest_cache
+    if _ocr_manifest_cache is not None and not force_reload:
+        return _ocr_manifest_cache
+
+    manifest = {"schema_version": 1, "languages": []}
+    try:
+        with open(get_ocr_manifest_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("languages"), list):
+            manifest = data
+    except FileNotFoundError:
+        print("⚠️ [OCR] ocr_manifest.json not found — multilingual OCR disabled, default en+ch_sim only.")
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"⚠️ [OCR] Failed to parse ocr_manifest.json: {e}")
+
+    _ocr_manifest_cache = manifest
+    return manifest
 
 
 def get_log_dir():

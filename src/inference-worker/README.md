@@ -10,7 +10,7 @@
 | 能力 | 实现 | 说明 |
 | --- | --- | --- |
 | 语义向量（SigLIP 2） | `engines/siglip_engine.py` | 图像 / 文本统一编码为 **768 维**向量（ONNX Runtime 推理） |
-| 文字识别（RapidOCR） | `engines/ocr_engine.py` | 离线多语言 OCR；**懒加载 + 多语言缓存**（`OCRManager`），按需构建 reader |
+| 文字识别（RapidOCR） | `engines/ocr_engine.py` | 离线多语言 OCR；`OCRManager` 按 rec 模型分组懒加载——4 内置（英/简中/繁中/日）+ 5 可下载（俄/韩/德/法/西）（详见 [OCR_MULTILANG.md](./OCR_MULTILANG.md)） |
 | 文本向量（BGE-M3） | `engines/bge_engine.py` | OCR 文本编码为 **1024 维** dense（第二条检索公路，与视觉互补；模型缺省不阻断启动） |
 | 视频抽帧 | `media/video_extractor.py` | OpenCV 按设定帧率抽取关键帧（详见 §6） |
 | 图片安全解码 | `media/image_io.py` | 兼容中文路径、`BGR→RGB` 校正 |
@@ -25,9 +25,10 @@
 src/inference-worker/
 ├── main.py                 # 极简启动入口（仅做引导）
 ├── server.py               # ZeroMQ 消息分发与业务调度中心
-├── config.py               # 全局配置、路径解析、日志目录
+├── config.py               # 全局配置、路径解析、日志目录、OCR 语言目录读取
 ├── requirements.txt        # 运行时依赖
 ├── build_nuitka.ps1        # Nuitka 打包脚本（当前首选）
+├── ocr_manifest.json       # OCR 语言目录单一事实源（语言码 / 分层 / 模型与字典 / 下载 URL / SHA256）
 ├── engines/
 │   ├── siglip_engine.py    # SigLIP 2（Vision & Text 封装）
 │   ├── ocr_engine.py       # OCRManager（RapidOCR 懒加载与多语言缓存）
@@ -41,7 +42,7 @@ src/inference-worker/
 │   └── video_extractor.py  # 视频抽帧
 └── models/                 # 由 scripts/download_models.py 生成（git 忽略）
     ├── siglip2-base/       # SigLIP 2 ONNX 模型（vision + text）
-    ├── ocr/                # OCR 自定义权重占位（默认 PP-OCRv4 权重随 wheel 自带）
+    ├── ocr/                # OCR 多语言 rec 模型：<code>/<rec_model> + <rec_dict>（ch_tra/ja 随包内置，其余按需下载）
     └── bge-m3/             # BGE-M3 文本向量（tokenizer + bge_m3_dense.onnx）
 ```
 
@@ -161,7 +162,7 @@ Nuitka 把 Python 编译成机器码，**无 Temp 解压延时、体积瘦 30~50
 
 ## 8. 配置与路径
 
-- **模型目录**：`config.py` 的 `get_model_dirs()` 返回 `models/siglip2-base` 与 `models/ocr`；SigLIP 首次运行可用 `scripts/download_models.py` 下载，OCR 的 PP-OCRv4 默认权重随 `rapidocr_onnxruntime` wheel 自带、无需下载。
+- **模型目录**：`config.py` 的 `get_model_dirs()` 返回 `models/siglip2-base` 与 `models/ocr`；SigLIP 首次运行可用 `scripts/download_models.py` 下载。OCR 的英文/简体中文权重（`ch_PP-OCRv4_rec`，中英合并字符集）随 `rapidocr_onnxruntime` wheel 自带、**无需下载**；繁體中文/日文由 `scripts/download_ocr_models.py` 随包内置，俄/韩/德/法/西在设置页按需下载。语言目录与下载源见 `ocr_manifest.json`（详见 [OCR_MULTILANG.md](./OCR_MULTILANG.md)）。
 - **日志目录**：`%TEMP%/FrameScout-Offline_AI_Search-Global/logs/`。
 - **离线环境变量**：`config.py` 设置 `USE_ONLINE=0` 等，强制 `transformers` 不联网、不写缓存。
 
