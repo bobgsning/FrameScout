@@ -12,11 +12,16 @@ const props = defineProps<{
   scanElapsed: number
   /** P0-8：预计剩余时间（秒），按当前速度估算 */
   scanEta: number
+  /** M2'''：是否处于暂停态 */
+  isPaused: boolean
 }>()
 
 // P1-9 / 债单 A6：停止扫描（用户终于有取消入口，不再只能等或杀进程）
+// M2'''：暂停/继续
 const emit = defineEmits<{
   (e: 'stop'): void
+  (e: 'pause'): void
+  (e: 'resume'): void
 }>()
 
 const percent = computed(() => {
@@ -44,6 +49,16 @@ function formatDuration(seconds: number): string {
           <span class="bus-status" :class="{ 'status-warning': props.currentStatus.includes('Batch') }">
             {{ props.currentStatus }}
           </span>
+          <button
+            v-if="props.isScanning && !props.isPaused"
+            class="btn-pause"
+            @click="emit('pause')"
+          >{{ $t('extraction.pause') }}</button>
+          <button
+            v-if="props.isScanning && props.isPaused"
+            class="btn-resume"
+            @click="emit('resume')"
+          >{{ $t('extraction.resume') }}</button>
           <button v-if="props.isScanning" class="btn-stop" @click="emit('stop')">{{ $t('extraction.stop') }}</button>
         </div>
       </div>
@@ -122,6 +137,34 @@ function formatDuration(seconds: number): string {
 
 .btn-stop:hover {
   background: rgba(248, 113, 113, 0.22);
+}
+
+.btn-pause,
+.btn-resume {
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: monospace;
+}
+
+.btn-pause {
+  background: rgba(255, 170, 51, 0.12);
+  border: 1px solid rgba(255, 170, 51, 0.35);
+  color: #ffaa33;
+}
+.btn-pause:hover {
+  background: rgba(255, 170, 51, 0.22);
+}
+
+.btn-resume {
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  color: #4ade80;
+}
+.btn-resume:hover {
+  background: rgba(74, 222, 128, 0.22);
 }
 
 .bus-title {

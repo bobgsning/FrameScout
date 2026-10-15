@@ -1,4 +1,5 @@
 {
+  // 与工作区根级 pyrightconfig.json 保持一致（venvPath/extraPaths 因相对基准不同而不同）。
   "typeCheckingMode": "standard",
   "venvPath": ".",
   "venv": ".venv",
@@ -9,6 +10,8 @@
     "**/build",
     "**/models",
     "**/target",
-    "**/__pycache__"
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv"
   ]
 }

@@ -106,7 +106,47 @@
     "deleteBackupMessage": "백업 \"{name}\"을(를) 삭제할까요?",
     "integrityOk": "✅ 데이터베이스 무결성 검사 통과",
     "integrityResult": "⚠️ 무결성 검사 결과: {result}",
-    "verifyFailed": "검증 실패: {err}"
+    "verifyFailed": "검증 실패: {err}",
+    "historyLimit": "🕘 검색 기록 한도",
+    "historyLimitHint": "최근 검색을 몇 개까지 보관할지. 「무제한」으로 하면 조용한 잘라내기를 멈춥니다.",
+    "historyEntries": "{n}개 보관",
+    "unlimited": "무제한",
+    "never": "안 함",
+    "days": "{n}일",
+    "cleanupTitle": "🧹 자동 정리",
+    "cleanupHint": "이 규칙은 시작 시 실행됩니다. 「안 함 / 무제한」이면 앱이 스스로 아무것도 삭제하지 않습니다.",
+    "eventRetention": "이벤트 기록 보관 기간",
+    "backupKeepCount": "보관할 백업 수",
+    "backupMaxAge": "백업 보관 일수",
+    "backupCopies": "{n}개",
+    "cleanupSummary": "🧹 시작 시 자동 정리:",
+    "cleanupEvents": "오래된 이벤트 기록 {n}개 삭제",
+    "cleanupBatches": "오래된 배치 기록 {n}개 삭제",
+    "cleanupBackups": "오래된 콜드 백업 {n}행 삭제",
+    "cleanupRows": "불필요한 레코드 {n}개 삭제",
+    "cleanupLoadFailed": "⚠️ 정리 설정을 불러오지 못했습니다: {err}",
+    "cleanupSaveFailed": "⚠️ 정리 설정을 저장하지 못했습니다: {err}",
+    "backupCreatedWithRotation": "✅ 백업 생성: {path}. 공간 확보를 위해 오래된 백업 삭제: {removed}",
+    "restoreBackup": "백업 복원",
+    "restoreBackupTitle": "이 백업을 복원할까요?",
+    "restoreBackupMessage": "「{name}」을(를) 복원할까요? 현재 데이터베이스가 교체되고 다음 시작 시 적용됩니다.",
+    "restorePending": "♻️ 복원 예약됨 — 다음 시작 시 적용됩니다.",
+    "restorePendingDetail": "♻️ 복원 예약됨 (현재 {current}프레임 → 백업 {backup}프레임). 현재 데이터베이스를 먼저 자동 백업했습니다.",
+    "restoreFramesCompare": "현재 {current}프레임 → 백업 {backup}프레임.",
+    "restoreWillLose": "{n}프레임이 손실됩니다.",
+    "restoreWillGain": "{n}프레임이 늘어납니다.",
+    "restoreSameCount": "프레임 수 동일.",
+    "restoreFailed": "⚠️ 복원 실패: {err}",
+    "lastCleanup": "지난 시작 시 정리:",
+    "lastCleanupNone": "지난 시작 시 정리가 없었습니다.",
+    "relevanceSensitivity": "🎚️ 관련도 민감도",
+    "relevanceSensitivityHint": "무엇을 「관련 있음」으로 볼지 정합니다. 느슨하면 더 많이, 엄격하면 가장 비슷한 것만 반환합니다.",
+    "sensitivityLoose": "느슨",
+    "sensitivityStandard": "표준",
+    "sensitivityStrict": "엄격",
+    "lowScoreFold": "낮은 점수 결과 자동 접기",
+    "lowScoreFoldHint": "켜면 낮은 신뢰도의 이미지를 기본으로 접습니다. 끄면 항상 전체로 표시합니다.",
+    "cleanupAt": "{at}"
   },
   "scan": {
     "capture": "📥 수집",
@@ -149,7 +189,9 @@
     "stop": "⏹ 중지",
     "progress": "파싱 진행률: {current} / {total},",
     "eta": "경과 {elapsed} · 남은 시간 {eta}",
-    "awaiting": "신호 대기 중..."
+    "awaiting": "신호 대기 중...",
+    "pause": "⏸ 일시정지",
+    "resume": "▶ 계속"
   },
   "incoming": {
     "banner": "📥 새 {count, plural, =1 {이미지가} other {이미지가}} {count}개 색인되었습니다. 클릭하여 확인하세요."
@@ -237,7 +279,12 @@
     "empty": "아직 기록이 없습니다——스캔을 실행하면 보고서가 여기에 표시됩니다.",
     "dirDistribution": "디렉터리 분포",
     "failedFiles": "실패 파일({count})",
-    "noSummary": "(이 실행에는 요약이 남지 않았습니다)"
+    "noSummary": "(이 실행에는 요약이 남지 않았습니다)",
+    "searchPlaceholder": "배치 ID 또는 유형으로 필터…",
+    "retry": "재시도",
+    "retrying": "재시도 중…",
+    "retried": "✅ {count}개 파일 재인덱싱",
+    "retryFailed": "⚠️ 재시도 실패: {err}"
   },
   "search": {
     "filename": "📁 파일 이름",
@@ -267,7 +314,14 @@
     "history": "검색 기록",
     "clearHistory": "기록 지우기",
     "removeHistory": "이 항목 제거",
-    "clearQuery": "입력 지우기"
+    "clearQuery": "입력 지우기",
+    "rewriteHint": "단어는 공백으로 나뉘어 AND 검색 · 「-」는 제외 · 「|」는 OR · 「단어@점수」는 최소 점수 · 전각 문자는 반각으로 접기",
+    "sourceFilter": "출처",
+    "allSources": "모든 출처",
+    "fromDate": "인덱싱 시작",
+    "toDate": "인덱싱 종료",
+    "visualIgnoresQuery": "검색 키워드는 이미지 검색에 참여하지 않습니다 — 여기서는 시각적으로만 일치합니다.",
+    "allTargetsOffHint": "모든 검색 채널이 꺼져 있습니다 — 기본적으로 파일 이름 + 메모 + 텍스트 인식으로 검색합니다."
   },
   "pagination": {
     "showingAll": "📂 전체 {total}개 파일 표시 중(페이지 없음)",
@@ -305,7 +359,11 @@
     "clickToExpand": "클릭하여 펼치기 / 접기",
     "deleteConfirmTitle": "텍스트 항목을 영구 삭제할까요?",
     "deleteConfirmMessage": "선택한 {count}개 항목을 영구 삭제할까요?",
-    "deleteConfirmDetail": "삭제는 최종적이며 되돌릴 수 없습니다."
+    "deleteConfirmDetail": "삭제는 최종적이며 되돌릴 수 없습니다.",
+    "ingestConfirmTitle": "기존 항목을 교체할까요?",
+    "ingestConfirmMessage": "가져오면 같은 출처의 {files}개 파일에서 {count}개의 기존 청크가 교체됩니다.",
+    "ingestConfirmDetail": "교체된 이전 청크는 즉시 삭제되며 복구할 수 없습니다.",
+    "ingestConfirmGo": "교체하고 가져오기"
   },
   "cards": {
     "lowConfidence": "낮은 신뢰도({score})",
@@ -343,7 +401,9 @@
     "copy": "복사",
     "copied": "✅ 복사됨",
     "copyFailed": "⚠️ 복사 실패",
-    "remainingChars": "{count}자 더 보기"
+    "remainingChars": "{count}자 더 보기",
+    "literalHitNote": "텍스트 일치(OCR / 메모 / 파일명)는 이진 히트입니다 — 「✓」는 키워드를 찾았다는 뜻이지 정확한 관련도 점수가 아닙니다.",
+    "literalHitBadge": "✓ 일치"
   },
   "cluster": {
     "title": "🧩 시각적 유사 클러스터",
@@ -437,7 +497,15 @@
     "confirmDelete": "스마트 폴더 \"{name}\"을(를) 삭제할까요? 되돌릴 수 없습니다.",
     "deleted": "🗑️ 스마트 폴더 \"{name}\"을(를) 삭제했습니다",
     "deleteFailed": "⚠️ 삭제 실패: {err}",
-    "execFailed": "⚠️ 스마트 폴더 실행 실패: {err}"
+    "execFailed": "⚠️ 스마트 폴더 실행 실패: {err}",
+    "stillRunning": "실행 중…",
+    "export": "스마트 폴더 내보내기 (JSON)",
+    "import": "스마트 폴더 가져오기 (JSON)",
+    "importInvalid": "⚠️ 잘못된 파일: 스마트 폴더를 찾을 수 없습니다",
+    "imported": "✅ 스마트 폴더 {count}개 가져옴",
+    "importFailed": "⚠️ 가져오기 실패: {err}",
+    "condCountHint": "여러 조건 행 사용 — 개수는 열 때 계산됩니다.",
+    "importRenamed": "이름이 겹쳐 {count}개 폴더에 번호를 붙였습니다"
   },
   "toast": {
     "databaseLocked": "데이터베이스가 사용 중입니다. 잠시 후 다시 시도하세요",
@@ -504,7 +572,11 @@
     "nothingProcessed": "⚠️ 처리된 항목 없음({count}개는 상태 불일치로 건너뜀)",
     "processed": "✅ {count}개 항목 / {frames}개 벡터 행 처리",
     "skipped": "{count}개 항목은 상태 불일치로 건너뜀",
-    "freshIndex": "✨ 새로 색인됨"
+    "freshIndex": "✨ 새로 색인됨",
+    "scanPaused": "⏸ 스캔 일시정지",
+    "pauseFailed": "일시정지 실패: {err}",
+    "scanResumed": "▶ 스캔 계속",
+    "resumeFailed": "계속 실패: {err}"
   },
   "searcher": {
     "loadFilesFailed": "⚠️ 파일을 불러오지 못했습니다: {err}",
@@ -514,7 +586,18 @@
     "visualSeeking": "[시각 모드] 의미적 공명을 찾는 중...",
     "loadAllFailed": "⚠️ 모든 파일을 불러오지 못했습니다: {err}",
     "textAdded": "✅ 텍스트 항목으로 추가됨",
-    "insertFailed": "⚠️ 텍스트 항목 삽입 실패: {err}"
+    "insertFailed": "⚠️ 텍스트 항목 삽입 실패: {err}",
+    "pureNegative": "⚠️ 이 쿼리에는 제외 단어만 있습니다(예: 「-cat」). 키워드를 하나 이상 추가하세요.",
+    "needPositive": "⚠️ 긍정 조건(키워드, 이미지, 시각)을 하나 이상 추가하세요.",
+    "conditionFailed": "⚠️ 일부 조건 검색 실패: {labels}",
+    "estimateResult": "약 {n}건",
+    "estimateBge": "텍스트 의미(BGE) 조건은 아직 실험 기능입니다. 검색을 실행해 결과를 확인하세요.",
+    "lastSession": "마지막 검색: {what}",
+    "restoreSession": "복원",
+    "dismissSession": "닫기",
+    "restoredImage": "이미지 검색",
+    "restoredQueryAndConds": "「{q}」＋조건 {n}개",
+    "restoredConds": "조건 {n}개"
   },
   "textEntries": {
     "loadFailed": "⚠️ 불러오기 실패: {err}",
@@ -523,7 +606,8 @@
     "ingesting": "⏳ 라이브러리에 인코딩 중(긴 문서는 분할됨)...",
     "failedCount": "{count}개 실패",
     "ingested": "✅ {files}개 파일 / {chunks}개 청크 색인{failedNote}",
-    "ingestFailed": "⚠️ 색인 실패: {err}"
+    "ingestFailed": "⚠️ 색인 실패: {err}",
+    "replacedChunks": "이전 청크 {count}개 교체"
   },
   "api": {
     "saveNoteFailed": "메모 저장 실패",
@@ -586,5 +670,48 @@
   "score": {
     "perfect": "🔥 100.0%",
     "match": "{icon} {score}% 일치"
+  },
+  "cond": {
+    "typeText": "텍스트",
+    "typeVisual": "시각",
+    "typeExclude": "제외",
+    "typeTime": "시간",
+    "typePath": "폴더",
+    "typeBatch": "출처 배치",
+    "typeTextSemantic": "텍스트 의미 (BGE)",
+    "typeTextEntry": "텍스트 항목",
+    "valuePlaceholder": "값…",
+    "in": "대상",
+    "minScore": "최소",
+    "noLimit": "제한 없음",
+    "pathPlaceholder": "D:\\폴더\\…",
+    "remove": "이 조건 삭제",
+    "files": "파일",
+    "groupLabel": "이 조건들",
+    "groupAll": "모두 충족",
+    "groupAny": "하나라도 충족",
+    "activeCount": "활성 조건 {n}개",
+    "empty": "추가 조건이 없습니다 — 위에 키워드를 입력하거나 조건을 추가하세요.",
+    "addCondition": "조건 추가",
+    "clearAll": "모두 지우기",
+    "sortBy": "정렬",
+    "sortByMain": "{label} 일치도",
+    "defaultSort": "첫 번째 조건",
+    "typeFileType": "파일 종류",
+    "typeSeed": "기준 이미지",
+    "typeImages": "이미지",
+    "typeVideos": "동영상",
+    "alsoText": "＋텍스트도",
+    "pickImage": "이미지 선택",
+    "today": "오늘",
+    "d7": "7일",
+    "d30": "30일",
+    "thisMonth": "이번 달",
+    "thisYear": "올해",
+    "sortByTime": "최신순",
+    "sortByName": "파일 이름",
+    "estimate": "건수만 계산",
+    "estimating": "계산 중…",
+    "estimateHint": "결과를 보여주지 않고 건수만 셉니다"
   }
 }

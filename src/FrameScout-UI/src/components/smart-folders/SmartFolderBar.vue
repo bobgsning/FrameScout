@@ -12,11 +12,17 @@
  */
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { SmartFolder } from '@/types/search'
+import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
+import { useToast } from '@/composables/useToast'
+import { exportJsonContent } from '@/utils/exporters'
+import type { SmartFolder, SmartFolderImportResult } from '@/types/search'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
-defineProps<{
+const props = defineProps<{
   smartFolders: SmartFolder[]
+  /** M0'''：正在刷新计数的文件夹 id 集合（由父组件真实完成时移除） */
+  refreshing: Set<number>
 }>()
 
 const emit = defineEmits<{
@@ -24,11 +30,14 @@ const emit = defineEmits<{
   (e: 'remove', id: number, name?: string): void
   (e: 'refreshCount', id: number): void
   (e: 'edit', folder: SmartFolder): void
+  (e: 'changed'): void
 }>()
 
-// 正在刷新计数的文件夹 id 集合
 const { t } = useI18n()
-const refreshing = ref<Set<number>>(new Set())
+
+// M0'''：超过 3 秒仍未完成的刷新，提示从「刷新中」切换为「仍在进行…」，
+// 但**绝不伪造完成**——完成态只能由父组件真实刷新完成后移除。
+const longRunning = ref<Set<number>>(new Set())
 
 // P0-4：删除二次确认（应用内 ConfirmDialog，替代 window.confirm）
 const confirmOpen = ref(false)
@@ -45,6 +54,11 @@ function onConfirmDelete() {
 
 function buildTooltip(sf: SmartFolder): string {
   const parts: string[] = [t('smartFolder.query', { query: sf.query_text || t('smartFolder.empty') })]
+  if (sf.needs_frontend_eval) {
+    // 第八轮：条件行文件夹的匹配数由前端引擎算，列表里给不出真值 —— 说清楚，不假装。
+    parts.push(t('smartFolder.condCountHint'))
+    return parts.join('\n')
+  }
   const channels: string[] = []
   if (sf.use_vector) channels.push(t('smartFolder.visualSemantic'))
   if (sf.use_ocr) channels.push(t('smartFolder.ocr'))
@@ -57,18 +71,81 @@ function buildTooltip(sf: SmartFolder): string {
   return parts.join('\n')
 }
 
+/** 计数徽标：该显示数字还是「?」。第八轮新增 needs_frontend_eval 一档。 */
+function countUnknown(sf: SmartFolder): boolean {
+  if (sf.needs_frontend_eval) return true
+  return sf.match_count === 0 && sf.use_vector && !(sf.use_ocr || sf.use_note || sf.use_filename)
+}
+
 function onRefresh(e: MouseEvent, id: number) {
   e.stopPropagation()
-  refreshing.value.add(id)
+  // 新一轮刷新：清掉上一轮残留的「仍在进行」标记
+  longRunning.value.delete(id)
   emit('refreshCount', id)
-  // 由父组件在刷新完成后移除 id；这里 3s 兜底自动移除
-  setTimeout(() => refreshing.value.delete(id), 3000)
+  // M0'''：完成态由父组件真实刷新完成后移除（refreshing 集合）。
+  // 这里只在 3 秒后仍未完成时，把提示切换为「仍在进行…」，不伪造完成。
+  setTimeout(() => {
+    if (props.refreshing.has(id)) longRunning.value.add(id)
+  }, 3000)
+}
+
+// M2''' 智能文件夹导出（补上「出」）：导出**条件定义**（去 id / match_count 噪音），
+// 走统一导出通道（exportJsonContent），尊重用户配置的 exportPath。
+function exportSmartFolders() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const clean = props.smartFolders.map((sf) => ({
+    name: sf.name,
+    query_text: sf.query_text,
+    use_vector: sf.use_vector,
+    use_ocr: sf.use_ocr,
+    use_note: sf.use_note,
+    use_filename: sf.use_filename,
+    // 第八轮：条件行定义一起导出，否则导入回来会退化成旧 7 字段（丢掉排除/阈值/筛选）。
+    criteria_json: sf.criteria_json ?? null
+  }))
+  exportJsonContent({ exported_at: new Date().toISOString(), smart_folders: clean }, `framescout_smart_folders_${stamp}.json`)
+}
+
+// M2''' 智能文件夹导入（补上「入」）：读取导出的 JSON，逐个写回 smart_folders 表。
+async function importSmartFolders() {
+  const { push } = useToast()
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  })
+  if (!selected) return
+  try {
+    const raw = await (await fetch(convertToFileUrl(selected as string))).text()
+    const parsed = JSON.parse(raw)
+    const list = (parsed.smart_folders ?? parsed) as SmartFolder[]
+    if (!Array.isArray(list)) {
+      push(t('smartFolder.importInvalid'), 'error')
+      return
+    }
+    // 第八轮：后端现在按名字去重（撞名加序号后缀，绝不覆盖已有定义），
+    // 并如实回报「导入 N 条，其中 M 条因重名改了名」。
+    const res = await invoke<SmartFolderImportResult>('import_smart_folders', { folders: list })
+    push(t('smartFolder.imported', { count: res.imported }), 'success')
+    if (res.renamed > 0) {
+      push(t('smartFolder.importRenamed', { count: res.renamed }), 'warning')
+    }
+    emit('changed')
+  } catch (err) {
+    push(t('smartFolder.importFailed', { err }), 'error')
+  }
+}
+
+/** 把本地文件路径转成可 fetch 的 URL（Windows 盘符路径）。 */
+function convertToFileUrl(p: string): string {
+  return 'file:///' + p.replace(/\\/g, '/')
 }
 </script>
 
 <template>
   <div v-if="smartFolders.length > 0" class="smart-folders-bar">
     <span class="smart-folder-label">{{ $t('smartFolder.title') }}</span>
+    <button class="sf-export" :title="$t('smartFolder.export')" @click="exportSmartFolders">⬇️</button>
+    <button class="sf-export" :title="$t('smartFolder.import')" @click="importSmartFolders">⬆️</button>
 
     <div
       v-for="sf in smartFolders"
@@ -80,16 +157,16 @@ function onRefresh(e: MouseEvent, id: number) {
       <span class="sf-name">📁 {{ sf.name }}</span>
       <span
         class="sf-count-badge"
-        :class="{ 'sf-count-unknown': sf.match_count === 0 && sf.use_vector && !(sf.use_ocr || sf.use_note || sf.use_filename) }"
-        :title="sf.match_count === 0 && sf.use_vector ? $t('smartFolder.semanticOnly') : $t('smartFolder.matchCount', { count: sf.match_count })"
+        :class="{ 'sf-count-unknown': countUnknown(sf) }"
+        :title="countUnknown(sf) ? (sf.needs_frontend_eval ? $t('smartFolder.condCountHint') : $t('smartFolder.semanticOnly')) : $t('smartFolder.matchCount', { count: sf.match_count })"
       >
-        {{ sf.match_count === 0 && sf.use_vector && !(sf.use_ocr || sf.use_note || sf.use_filename) ? '?' : sf.match_count }}
+        {{ countUnknown(sf) ? '?' : sf.match_count }}
       </span>
       <button
         class="sf-refresh"
-        :disabled="refreshing.has(sf.id)"
+        :disabled="props.refreshing.has(sf.id)"
         @click="onRefresh($event, sf.id)"
-        :title="refreshing.has(sf.id) ? $t('smartFolder.refreshing') : $t('smartFolder.refreshCount')"
+        :title="longRunning.has(sf.id) ? $t('smartFolder.stillRunning') : (props.refreshing.has(sf.id) ? $t('smartFolder.refreshing') : $t('smartFolder.refreshCount'))"
       >↻</button>
       <button
         class="sf-edit"
@@ -180,6 +257,21 @@ function onRefresh(e: MouseEvent, id: number) {
   border-radius: 50%;
   transition: all 0.15s;
   line-height: 1;
+}
+
+.sf-export {
+  background: none;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #8888a0;
+  transition: color 0.15s, background 0.15s;
+}
+.sf-export:hover {
+  color: #6c8ee3;
+  background: rgba(108, 142, 227, 0.15);
 }
 
 .sf-edit {

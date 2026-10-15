@@ -112,3 +112,15 @@ pub fn kill_ai_worker(child: &mut Child) {
     }
     let _ = child.kill();
 }
+
+/// 重启 worker：先杀掉旧进程（连同其子进程树），再拉起新进程，并更新句柄。
+///
+/// 用途：`onnxruntime-directml` 后端在连续大量推理后会资源耗尽、后续推理抛
+/// `UnicodeDecodeError`（详见 `mydocs/benchmarks/README.md`）。索引 OCR 大量文件时，
+/// 需定期重启 worker 以彻底重置 DirectML 后端、释放 GPU 资源。
+pub fn restart_ai_worker(child: &mut Option<Child>) {
+    if let Some(c) = child.as_mut() {
+        kill_ai_worker(c);
+    }
+    *child = Some(spawn_ai_worker());
+}

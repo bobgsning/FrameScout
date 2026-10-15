@@ -36,15 +36,16 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use license::TrialGuard;
 use model_code::AppState;
+use tauri::Manager;
 use tauri::RunEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 1. 启动 Python AI Worker 推理子进程
-    let mut ai_process = services::spawn_ai_worker();
+    let ai_process = services::spawn_ai_worker();
 
-    // 2. 初始化 SQLite 数据库并载入内存向量矩阵
-    let (db_conn, memory_db) = storage::init_db_and_load_memory();
+    // 2. 初始化 SQLite 数据库并载入内存向量矩阵（附带启动期清理汇总报告）
+    let (db_conn, memory_db, startup_cleanup) = storage::init_db_and_load_memory();
 
     // P2-5：数据库文件路径（备份命令需要）
     let db_path_string = dirs::data_local_dir()
@@ -64,7 +65,11 @@ pub fn run() {
             trial_guard: Mutex::new(TrialGuard::new()),
             // 取消标志共享给扫描线程与 cancel_scan 命令（P0-6）。
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            // 暂停标志（M2''' 暂停/继续）。
+            pause_flag: Arc::new(AtomicBool::new(false)),
             db_path: Mutex::new(db_path_string),
+            worker_process: Mutex::new(Some(ai_process)),
+            startup_cleanup: Mutex::new(startup_cleanup),
         })
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -79,12 +84,13 @@ pub fn run() {
             commands::index_cmd::scan_folder,
             commands::index_cmd::index_files,
             commands::index_cmd::cancel_scan,
+            commands::index_cmd::pause_scan,
+            commands::index_cmd::resume_scan,
 
             // OCR 识别命令
             commands::ocr_cmd::run_ocr_for_selected_files,
 
             // 搜索与引擎状态命令
-            commands::search_cmd::search_images,
             commands::search_cmd::search_by_image,
             commands::search_cmd::search_text,
             commands::search_cmd::insert_text_entry,
@@ -99,8 +105,8 @@ pub fn run() {
             commands::smart_folder_cmd::update_smart_folder,
             commands::smart_folder_cmd::get_smart_folders,
             commands::smart_folder_cmd::refresh_smart_folder_count,
-            commands::smart_folder_cmd::execute_smart_folder,
             commands::smart_folder_cmd::delete_smart_folder,
+            commands::smart_folder_cmd::import_smart_folders,
             // P2-2：RRF 跨通道融合
             commands::search_unified_cmd::search_unified,
             // P2-5：备份/恢复/完整性校验
@@ -108,6 +114,8 @@ pub fn run() {
             commands::backup_cmd::verify_integrity,
             commands::backup_cmd::list_backups,
             commands::backup_cmd::delete_backup,
+            commands::backup_cmd::restore_backup,
+            commands::backup_cmd::preview_restore,
             // P2-4：时间轴 + 去年今天
             commands::report_cmd::list_timeline,
             commands::report_cmd::last_year_today_count,
@@ -137,6 +145,7 @@ pub fn run() {
 
             // 纯文本通道（文本文件直接入库 + 条目管理）
             commands::text_cmd::ingest_text_files,
+            commands::text_cmd::preview_text_ingest,
             commands::text_cmd::list_text_entries,
             commands::text_cmd::delete_text_entries,
 
@@ -148,14 +157,25 @@ pub fn run() {
             commands::model_cmd::list_ocr_languages,
             commands::model_cmd::download_ocr_model,
             commands::model_cmd::delete_ocr_model,
+
+            // M0'''：应用设置（自动清理策略）与启动清理汇总
+            commands::settings_cmd::get_cleanup_settings,
+            commands::settings_cmd::set_cleanup_settings,
+            commands::settings_cmd::get_startup_cleanup_report,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri Build Fail");
 
     // 4. 监听退出事件：应用关闭时自动杀掉 AI Worker 子进程
-    app.run(move |_, event| {
+    app.run(move |app_handle, event| {
         if let RunEvent::Exit = event {
-            services::kill_ai_worker(&mut ai_process);
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                if let Ok(mut worker) = state.worker_process.lock() {
+                    if let Some(child) = worker.as_mut() {
+                        services::kill_ai_worker(child);
+                    }
+                }
+            }
         }
     });
 }

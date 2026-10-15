@@ -8,11 +8,11 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
-use crate::constants::{IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, RPC_TIMEOUT_INDEX_BASE_MS};
+use crate::constants::{IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, OCR_RESTART_THRESHOLD, RPC_TIMEOUT_INDEX_BASE_MS};
 use crate::fs_trace;
 use crate::model_code::{AppState, ProgressPayload};
 use crate::proto::framescout as proto;
-use crate::services::request_vector;
+use crate::services::{request_vector, restart_ai_worker, wait_until_ready};
 use crate::storage::journal;
 use crate::storage::normalize_path;
 use crate::storage::text_store::TextVectorRow;
@@ -88,10 +88,43 @@ pub async fn process_file_paths_internal(
     let mut batch_seq = 0usize;
     let mut cancelled = false;
     let batch_size = 4;
+    // 分段重启计数：OCR 模式下每 OCR_RESTART_THRESHOLD 张重启一次 worker
+    let mut processed_since_restart = 0usize;
 
     for chunk in pending_files.chunks(batch_size) {
         batch_seq += 1;
         let batch_started = Instant::now();
+
+        // M2''' 暂停/继续：每批开头若处于暂停态，原地轮询等待，不推进、不退出。
+        // resume_scan 置 false 后继续；期间若被取消，也一并退出等待。
+        if state.pause_flag.load(Ordering::Relaxed) {
+            let _ = app.emit(
+                "scan-progress",
+                ProgressPayload {
+                    status: "⏸ Paused by user".to_string(),
+                    file_path: "Scan paused, waiting to resume".to_string(),
+                    current: current_idx,
+                    total: total_to_process,
+                    new_files: vec![],
+                },
+            );
+            while state.pause_flag.load(Ordering::Relaxed) {
+                if state.cancel_flag.load(Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            let _ = app.emit(
+                "scan-progress",
+                ProgressPayload {
+                    status: "▶ Resuming...".to_string(),
+                    file_path: "Resuming scan".to_string(),
+                    current: current_idx,
+                    total: total_to_process,
+                    new_files: vec![],
+                },
+            );
+        }
 
         // 取消检查（P0-6 / 第三轮 B13）：每批开头检查 cancel_flag。
         // cancel_scan 命令把它置 true，本循环即停止后续批处理并返回已完成数量。
@@ -109,6 +142,31 @@ pub async fn process_file_paths_internal(
             );
             cancelled = true;
             break;
+        }
+
+        // 分段重启（OCR 模式）：每 160 张重启 worker，避免 DirectML 资源耗尽崩溃。
+        // 崩溃点实测约 530 张，160 留足余量；纯 SigLIP 不触发（1000 张不崩）。
+        if enable_ocr && processed_since_restart >= OCR_RESTART_THRESHOLD {
+            let _ = app.emit(
+                "scan-progress",
+                ProgressPayload {
+                    status: "🔄 Resetting AI engine...".to_string(),
+                    file_path: "Releasing GPU resources to prevent exhaustion".to_string(),
+                    current: current_idx,
+                    total: total_to_process,
+                    new_files: vec![],
+                },
+            );
+
+            {
+                let mut worker = state.worker_process.lock().map_err(|e| e.to_string())?;
+                restart_ai_worker(&mut worker);
+            }
+
+            // 等新 worker 加载模型就绪（最多 90 秒；有缓存时通常更快）
+            let _ = wait_until_ready(30);
+
+            processed_since_restart = 0;
         }
 
         // 检查试用限额
@@ -129,6 +187,7 @@ pub async fn process_file_paths_internal(
             }
         }
         current_idx += chunk.len();
+        processed_since_restart += chunk.len();
 
         let batch_payload = proto::BatchTask {
             file_paths: chunk.to_vec(),
@@ -415,8 +474,9 @@ pub async fn scan_folder(
     enable_ocr: bool,
     ocr_languages: Vec<String>,
 ) -> Result<usize, String> {
-    // 重置取消标志（P0-6）：上次扫描可能被取消留下 true，新扫描必须从 false 开始。
+    // 重置取消/暂停标志（P0-6 / M2'''）：新扫描必须从干净状态开始。
     state.cancel_flag.store(false, Ordering::Relaxed);
+    state.pause_flag.store(false, Ordering::Relaxed);
 
     {
         let memory = state.memory_db.read().map_err(|e| e.to_string())?;
@@ -487,8 +547,9 @@ pub async fn index_files(
     enable_ocr: bool,
     ocr_languages: Vec<String>,
 ) -> Result<usize, String> {
-    // 重置取消标志（P0-6）。
+    // 重置取消/暂停标志（P0-6 / M2'''）。
     state.cancel_flag.store(false, Ordering::Relaxed);
+    state.pause_flag.store(false, Ordering::Relaxed);
 
     {
         let memory = state.memory_db.read().map_err(|e| e.to_string())?;
@@ -546,5 +607,19 @@ pub async fn index_files(
 #[tauri::command]
 pub async fn cancel_scan(state: State<'_, AppState>) -> Result<bool, String> {
     state.cancel_flag.store(true, Ordering::Relaxed);
+    Ok(true)
+}
+
+/// 暂停正在进行的扫描/索引（M2''' 暂停/继续）。
+#[tauri::command]
+pub async fn pause_scan(state: State<'_, AppState>) -> Result<bool, String> {
+    state.pause_flag.store(true, Ordering::Relaxed);
+    Ok(true)
+}
+
+/// 继续被暂停的扫描/索引（M2''' 暂停/继续）。
+#[tauri::command]
+pub async fn resume_scan(state: State<'_, AppState>) -> Result<bool, String> {
+    state.pause_flag.store(false, Ordering::Relaxed);
     Ok(true)
 }

@@ -20,7 +20,11 @@ import { invoke } from '@tauri-apps/api/core'
 
 /** 导出的分数列：统一为人类可读分（0~99.9）。 */
 function humanScore(r: SearchResult): string {
-  const num = r.scoreKind === 'bge' ? getNumericScore(r.score, false, 'bge') : getSearchNumericScore(r)
+  const num = r.scoreKind === 'bge'
+    ? getNumericScore(r.score, false, 'bge')
+    : r.scoreKind === 'image'
+      ? getNumericScore(r.score, true)
+      : getSearchNumericScore(r)
   return num.toFixed(1)
 }
 
@@ -137,6 +141,11 @@ export async function exportMarkdown(results: SearchResult[], filename = 'frames
   }
 
   await downloadBlob(lines.join('\n'), filename, 'text/markdown')
+}
+
+/** 导出任意 JSON 内容（统一走导出通道）——供智能文件夹导出等复用（M2'''' 统一导出通道）。 */
+export async function exportJsonContent(content: unknown, filename: string): Promise<void> {
+  await downloadBlob(JSON.stringify(content, null, 2), filename, 'application/json')
 }
 
 /** 导出为 JSON */

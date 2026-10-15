@@ -18,9 +18,9 @@ pub use search::{
     OcrLineHit, PagedResponse, SearchResult, TextEntryHit, TextEntryItem, TextEntryListResponse,
     TextEntryPagedResponse, TextPagedResponse, TextSearchHit,
 };
-pub use state::AppState;
+pub use state::{AppState, StartupCleanupReport};
 pub use ghost::{GhostActionResult, GhostItem};
 pub use diff::{DiffItem, DiffKind, DiffReport, ReindexFailure, ReindexResult};
 pub use report::BatchReport;
 pub use frame::{EncodedFrame, OcrLine};
-pub use text::{TextIngestFailure, TextIngestResult};
+pub use text::{TextIngestFailure, TextIngestPreview, TextIngestResult};

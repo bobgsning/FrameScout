@@ -15,6 +15,10 @@ const KEY_OCR_LANG = 'framescout_ocr_lang'          // 旧：逗号分隔字符�
 const KEY_OCR_LANGS = 'framescout_ocr_languages'    // 新：JSON 数组
 const KEY_SCAN_MODE = 'framescout_scan_mode'
 const KEY_SEARCH_HISTORY = 'framescout_search_history'
+const KEY_SEARCH_HISTORY_LIMIT = 'framescout_search_history_limit'
+const KEY_RELEVANCE_SENSITIVITY = 'framescout_relevance_sensitivity'
+const KEY_LOW_SCORE_FOLD = 'framescout_low_score_fold'
+const KEY_ENABLE_OCR = 'framescout_enable_ocr'
 const KEY_LANGUAGE = 'framescout_language'
 const KEY_EXPORT_PATH = 'framescout_export_path'
 
@@ -24,6 +28,14 @@ const pageSize = ref(loadNumber(KEY_PAGE_SIZE, 8))
 const ocrLanguages = ref<string[]>(loadOcrLanguages())
 const scanMode = ref(loadString(KEY_SCAN_MODE, 'all'))
 const searchHistory = ref<string[]>(loadArray(KEY_SEARCH_HISTORY, []))
+// M0'''：搜索历史保留条数（默认 20，-1 = 不限）。
+const searchHistoryLimit = ref(loadNumber(KEY_SEARCH_HISTORY_LIMIT, 20))
+// M0'''：相关度灵敏度（loose / standard / strict），默认 standard。
+const relevanceSensitivity = ref<'loose' | 'standard' | 'strict'>(loadSensitivity())
+// M0'''：低分自动折叠开关（默认开，可关——「不折叠」是一等选项）。
+const lowScoreFoldEnabled = ref(loadBool(KEY_LOW_SCORE_FOLD, true))
+// M0'''：OCR 开关（此前每次重启静默回到 false，现持久化）。
+const enableOcr = ref(loadBool(KEY_ENABLE_OCR, false))
 // UI 语言：默认英文，中文为第二语言
 const language = ref(loadString(KEY_LANGUAGE, 'en'))
 // 导出目录（空 = 回退浏览器下载）
@@ -56,6 +68,21 @@ function loadArray(key: string, fallback: string[]): string[] {
   }
 }
 
+function loadBool(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key)
+    if (v == null) return fallback
+    return v === 'true' || v === '1'
+  } catch {
+    return fallback
+  }
+}
+
+function loadSensitivity(): 'loose' | 'standard' | 'strict' {
+  const v = loadString(KEY_RELEVANCE_SENSITIVITY, 'standard')
+  return v === 'loose' || v === 'strict' ? v : 'standard'
+}
+
 /** OCR 语言偏好：旧版存逗号分隔字符串，新版存 JSON 数组，此处做一次迁移。 */
 function loadOcrLanguages(): string[] {
   try {
@@ -79,6 +106,10 @@ watch(pageSize, (v) => save(KEY_PAGE_SIZE, String(v)))
 watch(ocrLanguages, (v) => save(KEY_OCR_LANGS, JSON.stringify(v)), { deep: true })
 watch(scanMode, (v) => save(KEY_SCAN_MODE, v))
 watch(searchHistory, (v) => save(KEY_SEARCH_HISTORY, JSON.stringify(v)), { deep: true })
+watch(searchHistoryLimit, (v) => save(KEY_SEARCH_HISTORY_LIMIT, String(v)))
+watch(relevanceSensitivity, (v) => save(KEY_RELEVANCE_SENSITIVITY, v))
+watch(lowScoreFoldEnabled, (v) => save(KEY_LOW_SCORE_FOLD, String(v)))
+watch(enableOcr, (v) => save(KEY_ENABLE_OCR, String(v)))
 watch(language, (v) => save(KEY_LANGUAGE, v))
 watch(exportPath, (v) => save(KEY_EXPORT_PATH, v))
 
@@ -91,7 +122,7 @@ function save(key: string, value: string) {
 }
 
 // ---------- 搜索历史 ----------
-const MAX_HISTORY = 20
+// M0'''：历史保留条数改为用户可设（默认 20，-1 = 不限），不再静默截断。
 
 function addSearchHistory(query: string): void {
   const trimmed = query.trim()
@@ -100,8 +131,10 @@ function addSearchHistory(query: string): void {
   const idx = searchHistory.value.indexOf(trimmed)
   if (idx >= 0) searchHistory.value.splice(idx, 1)
   searchHistory.value.unshift(trimmed)
-  if (searchHistory.value.length > MAX_HISTORY) {
-    searchHistory.value.length = MAX_HISTORY
+  // -1 = 不限：不截断
+  const limit = searchHistoryLimit.value
+  if (limit >= 0 && searchHistory.value.length > limit) {
+    searchHistory.value.length = limit
   }
 }
 
@@ -130,6 +163,10 @@ export function usePreferences() {
     ocrLanguages,
     scanMode,
     searchHistory,
+    searchHistoryLimit,
+    relevanceSensitivity,
+    lowScoreFoldEnabled,
+    enableOcr,
     language,
     exportPath,
     addSearchHistory,

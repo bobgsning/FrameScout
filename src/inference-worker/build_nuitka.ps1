@@ -103,7 +103,6 @@ $nuitkaArgs = @(
     "main.py",
     "--standalone",
     "--msvc=latest",
-    "--enable-plugin=numpy",
     "--include-package-data=onnxruntime",
     "--include-package-data=zmq",
     "--include-package-data=transformers",

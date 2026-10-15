@@ -106,7 +106,47 @@
     "deleteBackupMessage": "¿Eliminar la copia «{name}»?",
     "integrityOk": "✅ Verificación de integridad de la base de datos superada",
     "integrityResult": "⚠️ Resultado de la verificación: {result}",
-    "verifyFailed": "Error de verificación: {err}"
+    "verifyFailed": "Error de verificación: {err}",
+    "historyLimit": "🕘 Límite del historial",
+    "historyLimitHint": "Cuántas búsquedas recientes conservar. « Ilimitado » detiene el recorte silencioso.",
+    "historyEntries": "Conservar {n} entradas",
+    "unlimited": "Ilimitado",
+    "never": "Nunca",
+    "days": "{n} días",
+    "cleanupTitle": "🧹 Limpieza automática",
+    "cleanupHint": "Estas reglas se ejecutan al iniciar. « Nunca / Ilimitado » significa que la app no borra nada por su cuenta.",
+    "eventRetention": "Retención del historial de eventos",
+    "backupKeepCount": "Copias de respaldo a conservar",
+    "backupMaxAge": "Antigüedad máxima de respaldos",
+    "backupCopies": "{n} copias",
+    "cleanupSummary": "🧹 Limpieza automática al iniciar:",
+    "cleanupEvents": "{n} eventos antiguos eliminados",
+    "cleanupBatches": "{n} lotes antiguos eliminados",
+    "cleanupBackups": "{n} filas de respaldo en frío eliminadas",
+    "cleanupRows": "{n} registros obsoletos eliminados",
+    "cleanupLoadFailed": "⚠️ No se pudieron cargar los ajustes de limpieza: {err}",
+    "cleanupSaveFailed": "⚠️ No se pudieron guardar los ajustes de limpieza: {err}",
+    "backupCreatedWithRotation": "✅ Respaldo creado: {path}. Para hacer espacio, se eliminaron respaldos antiguos: {removed}",
+    "restoreBackup": "Restaurar respaldo",
+    "restoreBackupTitle": "¿Restaurar este respaldo?",
+    "restoreBackupMessage": "¿Restaurar « {name} »? La base actual se reemplazará y se aplicará en el próximo inicio.",
+    "restorePending": "♻️ Restauración programada — se aplicará en el próximo inicio.",
+    "restorePendingDetail": "♻️ Restauración programada (actual {current} fotogramas → respaldo {backup}). Primero se respaldó la base actual.",
+    "restoreFramesCompare": "Actual {current} fotogramas → respaldo {backup} fotogramas.",
+    "restoreWillLose": "Se perderán {n} fotogramas.",
+    "restoreWillGain": "Se ganarán {n} fotogramas.",
+    "restoreSameCount": "Mismo número de fotogramas.",
+    "restoreFailed": "⚠️ Falló la restauración: {err}",
+    "lastCleanup": "Limpieza del último inicio:",
+    "lastCleanupNone": "No hubo limpieza en el último inicio.",
+    "relevanceSensitivity": "🎚️ Sensibilidad de relevancia",
+    "relevanceSensitivityHint": "Qué cuenta como « relevante ». Suelto devuelve más resultados, estricto solo los más parecidos.",
+    "sensitivityLoose": "Suelto",
+    "sensitivityStandard": "Estándar",
+    "sensitivityStrict": "Estricto",
+    "lowScoreFold": "Colapsar resultados de puntaje bajo",
+    "lowScoreFoldHint": "Activado: las imágenes de poca confianza se colapsan por defecto. Desactívelo para mostrar siempre todo expandido.",
+    "cleanupAt": "{at}"
   },
   "scan": {
     "capture": "📥 Capturar",
@@ -149,7 +189,9 @@
     "stop": "⏹ Detener",
     "progress": "Progreso de análisis: {current} / {total},",
     "eta": "Transcurrido {elapsed} · restante {eta}",
-    "awaiting": "Esperando señal..."
+    "awaiting": "Esperando señal...",
+    "pause": "⏸ Pausar",
+    "resume": "▶ Reanudar"
   },
   "incoming": {
     "banner": "📥 {count} nuevas {count, plural, =1 {imagen ha sido} other {imágenes han sido}} indexadas. Haz clic para ver."
@@ -237,7 +279,12 @@
     "empty": "Aún no hay registros — ejecuta un escaneo y su informe aparecerá aquí.",
     "dirDistribution": "Distribución por carpetas",
     "failedFiles": "Archivos fallidos ({count})",
-    "noSummary": "(No quedó resumen de esta ejecución)"
+    "noSummary": "(No quedó resumen de esta ejecución)",
+    "searchPlaceholder": "Filtrar por id de lote o tipo…",
+    "retry": "Reintentar",
+    "retrying": "Reintentando…",
+    "retried": "✅ {count} archivos reindexados",
+    "retryFailed": "⚠️ Falló el reintento: {err}"
   },
   "search": {
     "filename": "📁 Nombre de archivo",
@@ -267,7 +314,14 @@
     "history": "Historial de búsqueda",
     "clearHistory": "Borrar historial",
     "removeHistory": "Eliminar esta entrada",
-    "clearQuery": "Borrar entrada"
+    "clearQuery": "Borrar entrada",
+    "rewriteHint": "Las palabras se separan por espacios y se buscan con Y · « - » excluye una palabra · « | » significa O · « palabra@puntaje » fija un mínimo · plena anchura plegada",
+    "sourceFilter": "Origen",
+    "allSources": "Todos los orígenes",
+    "fromDate": "Indexado desde",
+    "toDate": "Indexado hasta",
+    "visualIgnoresQuery": "La palabra clave NO participa en la búsqueda por imagen — aquí solo coincide visualmente.",
+    "allTargetsOffHint": "Todos los canales de búsqueda están desactivados — se buscará por nombre de archivo + nota + reconocimiento de texto de forma predeterminada."
   },
   "pagination": {
     "showingAll": "📂 Mostrando los {total} archivos (sin paginación)",
@@ -305,7 +359,11 @@
     "clickToExpand": "Clic para expandir / contraer",
     "deleteConfirmTitle": "¿Eliminar entradas de texto permanentemente?",
     "deleteConfirmMessage": "¿Eliminar {count} entradas seleccionadas permanentemente?",
-    "deleteConfirmDetail": "La eliminación es definitiva e irreversible."
+    "deleteConfirmDetail": "La eliminación es definitiva e irreversible.",
+    "ingestConfirmTitle": "¿Reemplazar las entradas existentes?",
+    "ingestConfirmMessage": "La importación reemplazará {count} bloque(s) existente(s) de {files} archivo(s) con la misma fuente.",
+    "ingestConfirmDetail": "Los bloques antiguos reemplazados se borran de inmediato y no se pueden recuperar.",
+    "ingestConfirmGo": "Reemplazar e importar"
   },
   "cards": {
     "lowConfidence": "Confianza baja ({score})",
@@ -343,7 +401,9 @@
     "copy": "Copiar",
     "copied": "✅ Copiado",
     "copyFailed": "⚠️ Error al copiar",
-    "remainingChars": "+{count} más"
+    "remainingChars": "+{count} más",
+    "literalHitNote": "Las coincidencias de texto (OCR / nota / nombre de archivo) son binarias — « ✓ » significa « palabra encontrada », no un puntaje preciso.",
+    "literalHitBadge": "✓ Coincidencia"
   },
   "cluster": {
     "title": "🧩 Clústeres de similitud visual",
@@ -437,7 +497,15 @@
     "confirmDelete": "¿Eliminar la carpeta inteligente «{name}»? No se puede deshacer.",
     "deleted": "🗑️ Carpeta inteligente «{name}» eliminada",
     "deleteFailed": "⚠️ Error al eliminar: {err}",
-    "execFailed": "⚠️ Error al ejecutar la carpeta inteligente: {err}"
+    "execFailed": "⚠️ Error al ejecutar la carpeta inteligente: {err}",
+    "stillRunning": "En ejecución…",
+    "export": "Exportar carpetas inteligentes (JSON)",
+    "import": "Importar carpetas inteligentes (JSON)",
+    "importInvalid": "⚠️ Archivo inválido: no se encontraron carpetas inteligentes",
+    "imported": "✅ {count} carpetas inteligentes importadas",
+    "importFailed": "⚠️ Falló la importación: {err}",
+    "condCountHint": "Usa filas de condiciones: el total se calcula al abrirlo.",
+    "importRenamed": "Se renombraron {count} carpeta(s) por nombres duplicados"
   },
   "toast": {
     "databaseLocked": "La base de datos está ocupada, inténtalo de nuevo más tarde",
@@ -504,7 +572,11 @@
     "nothingProcessed": "⚠️ No se procesó nada ({count} elementos omitidos por incoherencia de estado)",
     "processed": "✅ {count} elementos / {frames} filas de vectores procesados",
     "skipped": "{count} elementos omitidos por incoherencia de estado",
-    "freshIndex": "✨ Recién indexado"
+    "freshIndex": "✨ Recién indexado",
+    "scanPaused": "⏸ Escaneo en pausa",
+    "pauseFailed": "Falló la pausa: {err}",
+    "scanResumed": "▶ Escaneo reanudado",
+    "resumeFailed": "Falló la reanudación: {err}"
   },
   "searcher": {
     "loadFilesFailed": "⚠️ No se pudieron cargar los archivos: {err}",
@@ -514,7 +586,18 @@
     "visualSeeking": "[Modo visual] Buscando resonancia semántica...",
     "loadAllFailed": "⚠️ No se pudieron cargar todos los archivos: {err}",
     "textAdded": "✅ Añadido como entrada de texto",
-    "insertFailed": "⚠️ No se pudo insertar la entrada de texto: {err}"
+    "insertFailed": "⚠️ No se pudo insertar la entrada de texto: {err}",
+    "pureNegative": "⚠️ Esta consulta solo tiene palabras de exclusión (p. ej. « -cat »). Añada al menos una palabra clave.",
+    "needPositive": "⚠️ Añada al menos una condición positiva (palabra clave, imagen o visual).",
+    "conditionFailed": "⚠️ Falló la búsqueda de algunas condiciones: {labels}",
+    "estimateResult": "About {n} resultados",
+    "estimateBge": "Las condiciones de semántica textual (BGE) aún son experimentales: ejecuta la búsqueda para ver resultados.",
+    "lastSession": "Lo último que buscaste: {what}",
+    "restoreSession": "Restaurar",
+    "dismissSession": "Cerrar",
+    "restoredImage": "búsqueda por imagen",
+    "restoredQueryAndConds": "«{q}» + {n} condiciones",
+    "restoredConds": "{n} condiciones"
   },
   "textEntries": {
     "loadFailed": "⚠️ Error al cargar: {err}",
@@ -523,7 +606,8 @@
     "ingesting": "⏳ Codificando en la biblioteca (los documentos largos se dividen)...",
     "failedCount": "{count} fallidos",
     "ingested": "✅ {files} archivos / {chunks} fragmentos indexados{failedNote}",
-    "ingestFailed": "⚠️ Error al indexar: {err}"
+    "ingestFailed": "⚠️ Error al indexar: {err}",
+    "replacedChunks": "se reemplazaron {count} fragmentos antiguos"
   },
   "api": {
     "saveNoteFailed": "No se pudo guardar la nota",
@@ -586,5 +670,48 @@
   "score": {
     "perfect": "🔥 100.0%",
     "match": "{icon} {score}% de coincidencia"
+  },
+  "cond": {
+    "typeText": "Texto",
+    "typeVisual": "Visual",
+    "typeExclude": "Excluir",
+    "typeTime": "Tiempo",
+    "typePath": "Carpeta",
+    "typeBatch": "Lote de origen",
+    "typeTextSemantic": "Semántica de texto (BGE)",
+    "typeTextEntry": "Entrada de texto",
+    "valuePlaceholder": "valor…",
+    "in": "en",
+    "minScore": "mín.",
+    "noLimit": "sin límite",
+    "pathPlaceholder": "D:\\carpeta\\…",
+    "remove": "Eliminar esta condición",
+    "files": "archivos",
+    "groupLabel": "Estas condiciones",
+    "groupAll": "todas cumplidas",
+    "groupAny": "alguna cumplida",
+    "activeCount": "{n} condiciones activas",
+    "empty": "Sin condiciones adicionales — escriba una palabra clave arriba o añada una condición.",
+    "addCondition": "Añadir condición",
+    "clearAll": "Borrar todo",
+    "sortBy": "Ordenar por",
+    "sortByMain": "coincidencia de {label}",
+    "defaultSort": "primera condición",
+    "typeFileType": "Tipo de archivo",
+    "typeSeed": "Imagen de referencia",
+    "typeImages": "Imágenes",
+    "typeVideos": "Vídeos",
+    "alsoText": "＋ también texto en",
+    "pickImage": "Elegir imagen",
+    "today": "Hoy",
+    "d7": "7 días",
+    "d30": "30 días",
+    "thisMonth": "Este mes",
+    "thisYear": "Este año",
+    "sortByTime": "Más recientes primero",
+    "sortByName": "Nombre de archivo",
+    "estimate": "Contar",
+    "estimating": "Contando…",
+    "estimateHint": "Cuenta cuántos resultados hay sin mostrarlos"
   }
 }

@@ -18,6 +18,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { open } from '@tauri-apps/plugin-dialog'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import OcrLanguageList from '@/components/OcrLanguageList.vue'
+import type { CleanupSettings, BackupResult, StartupCleanupReport } from '@/types/search'
 
 const props = defineProps<{
   visible: boolean
@@ -27,9 +28,57 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { folderPath, pageSize, language, exportPath } = usePreferences()
+const { folderPath, pageSize, language, exportPath, searchHistoryLimit, relevanceSensitivity, lowScoreFoldEnabled } =
+  usePreferences()
 const { push } = useToast()
 const { t } = useI18n()
+
+// ---- M0''' 自动清理策略（事件保留天数 / 备份份数 / 备份天数） ----
+// `-1` = 「永不 / 不限」。落库到后端 app_settings（启动期裁剪读取）。
+const cleanup = ref<CleanupSettings>({
+  event_retention_days: 90,
+  backup_keep_count: 3,
+  backup_max_age_days: 30
+})
+
+async function loadCleanupSettings() {
+  try {
+    cleanup.value = await invoke<CleanupSettings>('get_cleanup_settings')
+  } catch (err) {
+    push(t('settings.cleanupLoadFailed', { err }), 'error')
+  }
+}
+
+async function saveCleanupSettings() {
+  try {
+    await invoke('set_cleanup_settings', { settings: cleanup.value })
+  } catch (err) {
+    push(t('settings.cleanupSaveFailed', { err }), 'error')
+  }
+}
+
+// ---- M1'''' 清理报告可回看：上次启动清理了什么（不可逆删除有账可查） ----
+const lastCleanup = ref<StartupCleanupReport | null>(null)
+async function loadLastCleanup() {
+  try {
+    lastCleanup.value = await invoke<StartupCleanupReport>('get_startup_cleanup_report')
+  } catch {
+    lastCleanup.value = null
+  }
+}
+function hasLastCleanup(): boolean {
+  const r = lastCleanup.value
+  if (!r) return false
+  return r.pruned_events > 0 || r.pruned_batches > 0 || r.pruned_reindex_backups > 0 || r.cleaned_residual_rows > 0
+}
+
+/** 第八轮：把 UTC ISO 时间显示成本地可读时刻（否则用户看到的是「2026-10-14T02:11:03Z」）。 */
+function formatCleanupTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 // 导出目录：用户可选一个默认导出位置并持久化
 async function selectExportDir() {
@@ -73,19 +122,31 @@ function formatBackupTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString()
 }
 
-// 打开时加载备份列表
+// 打开时加载备份列表 + 自动清理策略 + 上次启动清理报告
 watch(
   () => props.visible,
   (v) => {
-    if (v) listBackups()
+    if (v) {
+      listBackups()
+      loadCleanupSettings()
+      loadLastCleanup()
+    }
   }
 )
 
-// P2-5：备份
+// P2-5：备份（M0'''：返回被轮转删除的旧备份文件名，Toast 告知）
 async function onBackup() {
   try {
-    const path = await invoke<string>('backup_database')
-    push(t('settings.backupCreated', { path }), 'success', 5000)
+    const result = await invoke<BackupResult>('backup_database')
+    if (result.removed.length > 0) {
+      push(
+        t('settings.backupCreatedWithRotation', { path: result.path, removed: result.removed.join(', ') }),
+        'success',
+        6000
+      )
+    } else {
+      push(t('settings.backupCreated', { path: result.path }), 'success', 5000)
+    }
     await listBackups()
   } catch (err) {
     push(t('settings.backupFailed', { err }), 'error')
@@ -132,6 +193,66 @@ async function openBackupDir(b: BackupInfo) {
   }
 }
 
+// M2'''：备份恢复（pending restore，下次启动生效）
+// M1'''' P0-2：确认前先预览「当前 N 条 → 备份 M 条」，确认后自动备份当前库再写标记。
+interface RestorePreview {
+  current_frames: number
+  backup_frames: number
+}
+const restoreConfirmOpen = ref(false)
+const pendingRestore = ref<BackupInfo | null>(null)
+const restorePreview = ref<RestorePreview | null>(null)
+const restorePreviewBusy = ref(false)
+
+async function onRequestRestore(b: BackupInfo) {
+  pendingRestore.value = b
+  restorePreview.value = null
+  restorePreviewBusy.value = true
+  try {
+    restorePreview.value = await invoke<RestorePreview>('preview_restore', { path: b.path })
+  } catch {
+    restorePreview.value = null
+  } finally {
+    restorePreviewBusy.value = false
+  }
+  restoreConfirmOpen.value = true
+}
+
+/** 生成「会丢失/增加多少」的文案 */
+function restoreDeltaText(): string {
+  const p = restorePreview.value
+  if (!p) return ''
+  const delta = p.current_frames - p.backup_frames
+  if (delta > 0) return t('settings.restoreWillLose', { n: delta })
+  if (delta < 0) return t('settings.restoreWillGain', { n: -delta })
+  return t('settings.restoreSameCount')
+}
+
+/** 确认框完整文案：当前 N 条 → 备份 M 条 + 将丢失/增加 X 条。 */
+function restoreBackupMessageText(): string {
+  const name = pendingRestore.value?.name || ''
+  const p = restorePreview.value
+  if (!p) return t('settings.restoreBackupMessage', { name })
+  const compare = t('settings.restoreFramesCompare', { current: p.current_frames, backup: p.backup_frames })
+  return `${t('settings.restoreBackupMessage', { name })} ${compare}${restoreDeltaText() ? ' · ' + restoreDeltaText() : ''}`
+}
+
+async function onConfirmRestore() {
+  if (!pendingRestore.value) return
+  try {
+    const res = await invoke<{ auto_backup_path: string; current_frames: number; backup_frames: number }>(
+      'restore_backup',
+      { path: pendingRestore.value.path }
+    )
+    restoreConfirmOpen.value = false
+    pendingRestore.value = null
+    restorePreview.value = null
+    push(t('settings.restorePendingDetail', { current: res.current_frames, backup: res.backup_frames }), 'success', 8000)
+  } catch (err) {
+    push(t('settings.restoreFailed', { err }), 'error')
+  }
+}
+
 // 界面语言选项（国际化扩展：9 种界面语言，母语名显示）
 const languageOptions = [
   { value: 'en', labelKey: 'settings.languageEn' },
@@ -146,7 +267,8 @@ const languageOptions = [
 ]
 
 // P1-9：与搜索栏统一取值集合（三处收敛为一套）
-const pageSizeOptions = [4, 8, 16, 32, 50]
+// 第八轮：补 100 —— 大库翻页太碎，100 张/页是设计文档点名要的档位。
+const pageSizeOptions = [4, 8, 16, 32, 50, 100]
 
 // 应用版本号（从 package.json 读取，Vite 注入）
 const appVersion = __APP_VERSION__ || '3.2.0'
@@ -207,6 +329,39 @@ function clearFolderPath() {
             </select>
           </div>
 
+          <!-- M0'''：搜索历史保留条数（此前静默截到 20，现可设「不限」） -->
+          <div class="setting-group">
+            <label class="setting-label">🕘 {{ $t('settings.historyLimit') }}</label>
+            <p class="setting-hint">{{ $t('settings.historyLimitHint') }}</p>
+            <select v-model="searchHistoryLimit" class="setting-select">
+              <option :value="10">{{ $t('settings.historyEntries', { n: 10 }) }}</option>
+              <option :value="20">{{ $t('settings.historyEntries', { n: 20 }) }}</option>
+              <option :value="50">{{ $t('settings.historyEntries', { n: 50 }) }}</option>
+              <option :value="100">{{ $t('settings.historyEntries', { n: 100 }) }}</option>
+              <option :value="-1">{{ $t('settings.unlimited') }}</option>
+            </select>
+          </div>
+
+          <!-- M0'''：相关度灵敏度 + 低分折叠开关 -->
+          <div class="setting-group">
+            <label class="setting-label">🎚️ {{ $t('settings.relevanceSensitivity') }}</label>
+            <p class="setting-hint">{{ $t('settings.relevanceSensitivityHint') }}</p>
+            <select v-model="relevanceSensitivity" class="setting-select">
+              <option value="loose">{{ $t('settings.sensitivityLoose') }}</option>
+              <option value="standard">{{ $t('settings.sensitivityStandard') }}</option>
+              <option value="strict">{{ $t('settings.sensitivityStrict') }}</option>
+            </select>
+          </div>
+
+          <!-- M0'''：低分自动折叠开关（「不折叠」是一等选项） -->
+          <div class="setting-group">
+            <label class="setting-toggle">
+              <input v-model="lowScoreFoldEnabled" type="checkbox" class="setting-checkbox" />
+              {{ $t('settings.lowScoreFold') }}
+            </label>
+            <p class="setting-hint">{{ $t('settings.lowScoreFoldHint') }}</p>
+          </div>
+
           <!-- 导出目录（Batch 31：用户可设默认导出位置） -->
           <div class="setting-group">
             <label class="setting-label">📤 {{ $t('settings.exportDir') }}</label>
@@ -221,6 +376,58 @@ function clearFolderPath() {
               <button class="btn-export-browse" @click="selectExportDir">{{ $t('settings.browse') }}</button>
               <button class="btn-clear" @click="clearExportPath" :disabled="!exportPath">{{ $t('settings.clear') }}</button>
             </div>
+          </div>
+
+          <!-- M0'''：自动清理策略（给开关，支持「永不 / 不限」） -->
+          <div class="setting-group">
+            <label class="setting-label">🧹 {{ $t('settings.cleanupTitle') }}</label>
+            <p class="setting-hint">{{ $t('settings.cleanupHint') }}</p>
+            <div class="cleanup-grid">
+              <div class="cleanup-field">
+                <span class="cleanup-label">{{ $t('settings.eventRetention') }}</span>
+                <select v-model="cleanup.event_retention_days" class="setting-select" @change="saveCleanupSettings">
+                  <option :value="30">{{ $t('settings.days', { n: 30 }) }}</option>
+                  <option :value="90">{{ $t('settings.days', { n: 90 }) }}</option>
+                  <option :value="180">{{ $t('settings.days', { n: 180 }) }}</option>
+                  <option :value="365">{{ $t('settings.days', { n: 365 }) }}</option>
+                  <option :value="-1">{{ $t('settings.never') }}</option>
+                </select>
+              </div>
+              <div class="cleanup-field">
+                <span class="cleanup-label">{{ $t('settings.backupKeepCount') }}</span>
+                <select v-model="cleanup.backup_keep_count" class="setting-select" @change="saveCleanupSettings">
+                  <option :value="1">{{ $t('settings.backupCopies', { n: 1 }) }}</option>
+                  <option :value="2">{{ $t('settings.backupCopies', { n: 2 }) }}</option>
+                  <option :value="3">{{ $t('settings.backupCopies', { n: 3 }) }}</option>
+                  <option :value="5">{{ $t('settings.backupCopies', { n: 5 }) }}</option>
+                  <option :value="10">{{ $t('settings.backupCopies', { n: 10 }) }}</option>
+                  <option :value="-1">{{ $t('settings.unlimited') }}</option>
+                </select>
+              </div>
+              <div class="cleanup-field">
+                <span class="cleanup-label">{{ $t('settings.backupMaxAge') }}</span>
+                <select v-model="cleanup.backup_max_age_days" class="setting-select" @change="saveCleanupSettings">
+                  <option :value="7">{{ $t('settings.days', { n: 7 }) }}</option>
+                  <option :value="30">{{ $t('settings.days', { n: 30 }) }}</option>
+                  <option :value="90">{{ $t('settings.days', { n: 90 }) }}</option>
+                  <option :value="365">{{ $t('settings.days', { n: 365 }) }}</option>
+                  <option :value="-1">{{ $t('settings.unlimited') }}</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- M1''''：上次启动清理（不可逆删除有账可查，不再只有一次性 Toast） -->
+            <div v-if="hasLastCleanup()" class="last-cleanup">
+              <span class="last-cleanup-title">{{ $t('settings.lastCleanup') }}</span>
+              <span v-if="lastCleanup && lastCleanup.cleaned_at" class="last-cleanup-time">
+                {{ $t('settings.cleanupAt', { at: formatCleanupTime(lastCleanup.cleaned_at) }) }}
+              </span>
+              <span v-if="lastCleanup!.pruned_events > 0">{{ $t('settings.cleanupEvents', { n: lastCleanup!.pruned_events }) }}</span>
+              <span v-if="lastCleanup!.pruned_batches > 0">{{ $t('settings.cleanupBatches', { n: lastCleanup!.pruned_batches }) }}</span>
+              <span v-if="lastCleanup!.pruned_reindex_backups > 0">{{ $t('settings.cleanupBackups', { n: lastCleanup!.pruned_reindex_backups }) }}</span>
+              <span v-if="lastCleanup!.cleaned_residual_rows > 0">{{ $t('settings.cleanupRows', { n: lastCleanup!.cleaned_residual_rows }) }}</span>
+            </div>
+            <p v-else class="last-cleanup-empty">{{ $t('settings.lastCleanupNone') }}</p>
           </div>
 
           <!-- 备份与维护（P2-5） -->
@@ -240,6 +447,7 @@ function clearFolderPath() {
                   <span class="backup-name" :title="b.path">{{ b.name }}</span>
                   <span class="backup-meta">{{ formatBackupSize(b.size_bytes) }} · {{ formatBackupTime(b.modified_ts) }}</span>
                   <span class="backup-actions">
+                    <button class="btn-icon" :title="$t('settings.restoreBackup')" @click="onRequestRestore(b)">🔄</button>
                     <button class="btn-icon" :title="$t('settings.openBackupDir')" @click="openBackupDir(b)">📂</button>
                     <button class="btn-icon btn-icon-danger" :title="$t('settings.deleteBackup')" @click="onRequestDeleteBackup(b)">🗑</button>
                   </span>
@@ -273,6 +481,17 @@ function clearFolderPath() {
           danger
           @confirm="onConfirmDeleteBackup"
           @cancel="confirmOpen = false"
+        />
+
+        <!-- M2'''：备份恢复二次确认（下次启动生效，含帧数对比） -->
+        <ConfirmDialog
+          :visible="restoreConfirmOpen"
+          :title="$t('settings.restoreBackupTitle')"
+          :message="restoreBackupMessageText()"
+          :confirm-text="$t('settings.restoreBackup')"
+          danger
+          @confirm="onConfirmRestore"
+          @cancel="restoreConfirmOpen = false"
         />
       </div>
     </div>
@@ -596,5 +815,61 @@ function clearFolderPath() {
   font-size: 12px;
   color: #ffaa33;
   line-height: 1.5;
+}
+
+.cleanup-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cleanup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.last-cleanup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 170, 51, 0.06);
+  border: 1px dashed rgba(255, 170, 51, 0.25);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #ffaa33;
+}
+.last-cleanup-title {
+  font-weight: 600;
+  color: #e8a86a;
+}
+.last-cleanup-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #666677;
+}
+
+.cleanup-label {
+  font-size: 12px;
+  color: #8888a0;
+}
+
+.setting-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #b0b0c0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.setting-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #6c8ee3;
+  cursor: pointer;
 }
 </style>

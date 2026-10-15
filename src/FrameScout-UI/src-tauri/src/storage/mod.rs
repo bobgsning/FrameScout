@@ -1,3 +1,4 @@
+pub mod app_settings;
 pub mod db;
 pub mod journal;
 pub mod migrations;

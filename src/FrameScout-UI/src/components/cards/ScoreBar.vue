@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
- * ScoreBar — 得分来源条（P2-6 / 第三轮「相似度无解释」）。
+ * ScoreBar — 得分来源（P2-6 / 第三轮「相似度无解释」）。
  *
- * 消费 search_unified 返回的 `matches: [{channel, score}]`，画一条横向堆叠条，
- * 让「为什么这条结果排第一」一眼可读：画面 / OCR / 笔记 / 文件名各占多少。
+ * 第七轮修复：字面命中（OCR/笔记/文件名）是二值命中，后端没有可比较的通道分，
+ * 因此**不再画「堆叠占比条」**（那需要虚构权重，制造「画面 58%」这种假解释）。
+ * 改为：视觉通道显示真实「匹配度」，字面通道只标「✓ 命中」。
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -23,51 +24,33 @@ const CHANNEL_META: Record<string, { labelKey: string; color: string }> = {
   filename: { labelKey: 'cards.filenameScore', color: '#b06cff' },
 }
 
-// P1-11：修占比失真。此前非视觉通道硬编码 100（=「100% 完美匹配」），
-// 而字面命中本质是二值的（命中 = score 1.0），「命中」≠「完美匹配」。
-// 现统一到「人类可读贡献」量纲：视觉走原始余弦映射，字面命中映射为
-// 单通道字面命中的合理贡献（65，与 resolveLiteralScore 的口径一致），
-// 使视觉与字面可比、不再被「100 满分」误导。
-const LITERAL_HIT_WEIGHT = 65
+const visualMatch = computed(() => props.matches.find((m) => m.channel === 'visual'))
+const literalMatches = computed(() => props.matches.filter((m) => m.channel !== 'visual'))
 
-function channelWeight(m: ChannelMatch): number {
-  if (m.channel === 'visual') return mapToHumanScore(m.score, false)
-  return LITERAL_HIT_WEIGHT
-}
-
-const total = computed(() => {
-  const sum = props.matches.reduce((s, m) => s + channelWeight(m), 0)
-  return sum > 0 ? sum : 1
-})
-
-const segments = computed(() =>
-  props.matches.map((m) => {
-    const meta = CHANNEL_META[m.channel]
-    return {
-      label: meta ? t(meta.labelKey) : m.channel,
-      color: meta?.color ?? '#8888a0',
-      pct: (channelWeight(m) / total.value) * 100,
-    }
-  })
+/** 视觉匹配度（人类可读分），只在有视觉命中时显示 */
+const visualScore = computed(() =>
+  visualMatch.value ? Math.round(mapToHumanScore(visualMatch.value.score, false)) : null
 )
+
+function metaOf(channel: string) {
+  const m = CHANNEL_META[channel]
+  return m ? { label: t(m.labelKey), color: m.color } : { label: channel, color: '#8888a0' }
+}
 </script>
 
 <template>
   <div v-if="props.matches.length" class="score-bar-wrap">
-    <div class="score-bar">
-      <div
-        v-for="(seg, i) in segments"
-        :key="i"
-        class="score-seg"
-        :style="{ width: seg.pct + '%', background: seg.color }"
-      ></div>
-    </div>
     <div class="score-legend">
-      <span v-for="(seg, i) in segments" :key="i" class="score-legend-item">
-        <i class="score-dot" :style="{ background: seg.color }"></i>
-        {{ seg.label }} {{ Math.round(seg.pct) }}%
+      <span v-if="visualMatch && visualScore != null" class="score-legend-item">
+        <i class="score-dot" :style="{ background: CHANNEL_META.visual.color }"></i>
+        {{ $t('cards.frame') }} {{ visualScore }}%
+      </span>
+      <span v-for="m in literalMatches" :key="m.channel" class="score-legend-item">
+        <i class="score-dot" :style="{ background: metaOf(m.channel).color }"></i>
+        {{ metaOf(m.channel).label }} ✓
       </span>
     </div>
+    <p v-if="literalMatches.length" class="score-literal-note">{{ t('cards.literalHitNote') }}</p>
   </div>
 </template>
 
@@ -79,19 +62,8 @@ const segments = computed(() =>
   margin: 6px 0;
 }
 
-.score-bar {
-  display: flex;
-  height: 6px;
-  width: 100%;
-  border-radius: 3px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.score-seg {
-  height: 100%;
-  transition: width 0.3s ease;
-}
+/* 第八轮：`.score-bar` / `.score-seg`（堆叠占比条）已随「去虚构权重」一起删除，
+   此处不再保留死样式。 */
 
 .score-legend {
   display: flex;
@@ -112,5 +84,12 @@ const segments = computed(() =>
   height: 8px;
   border-radius: 2px;
   display: inline-block;
+}
+
+.score-literal-note {
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: #666677;
+  line-height: 1.4;
 }
 </style>

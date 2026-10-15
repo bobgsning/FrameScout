@@ -13,7 +13,9 @@ use walkdir::WalkDir;
 
 use crate::constants::{TEXT_CHUNK_CHARS, TEXT_CHUNK_OVERLAP, TEXT_EXTENSIONS};
 use crate::fs_trace;
-use crate::model_code::{AppState, TextEntryListResponse, TextIngestFailure, TextIngestResult};
+use crate::model_code::{
+    AppState, TextEntryListResponse, TextIngestFailure, TextIngestPreview, TextIngestResult,
+};
 use crate::services::request_text_entry;
 use crate::storage::normalize_path;
 use crate::storage::text_store;
@@ -149,23 +151,14 @@ fn chunk_text(text: &str, max_chars: usize, file_name: &str) -> Vec<String> {
         .collect()
 }
 
-/// 文本文件 / 文件夹入库：读文本 → 分块 → BGE-M3 编码 → 落 `text_entries`。
+/// 展开入库目标：文件夹递归 + 按扩展名过滤，返回 `(目标文件, 失败明细)`。
 ///
-/// `paths` 可以是文件（按扩展名过滤）或文件夹（递归找 `.md/.txt/...`）。
-/// 长文档自动切片，块信息记在 `metadata_json`（chunk_index / chunk_count）。
-#[tauri::command]
-pub async fn ingest_text_files(
-    state: State<'_, AppState>,
-    paths: Vec<String>,
-) -> Result<TextIngestResult, String> {
-    let started = Instant::now();
-    let mut ingested: Vec<String> = Vec::new();
-    let mut failed: Vec<TextIngestFailure> = Vec::new();
-    let mut chunks_total = 0usize;
-
-    // 1) 展开目标文件：文件夹递归，单文件按扩展名过滤
+/// `ingest_text_files` 与 `preview_text_ingest` 共用，保证「删前预告」与实际入库
+/// 的口径完全一致——预告说会替换 N 块，实际就动 N 块。
+fn expand_targets(paths: &[String]) -> (Vec<String>, Vec<TextIngestFailure>) {
     let mut targets: Vec<String> = Vec::new();
-    for raw in &paths {
+    let mut failed: Vec<TextIngestFailure> = Vec::new();
+    for raw in paths {
         let path = normalize_path(raw);
         if path.is_empty() {
             continue;
@@ -211,6 +204,52 @@ pub async fn ingest_text_files(
             });
         }
     }
+    (targets, failed)
+}
+
+/// 入库前预演：不读文件、不编码、不落库，只算「这次会替换多少旧块」。
+///
+/// 供前端在按下入库按钮前做删前预告——用「目标里有多少 source 已有旧块」的
+/// 真实数字，而非全库条目总数（后者会把「全新文件」也拦下来、且报错数量）。
+#[tauri::command]
+pub async fn preview_text_ingest(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<TextIngestPreview, String> {
+    let (targets, _failed) = expand_targets(&paths);
+    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let mut will_replace_chunks = 0usize;
+    let mut affected_files = 0usize;
+    for path in &targets {
+        let n = text_store::count_text_entries_by_source(&db, path)?;
+        if n > 0 {
+            affected_files += 1;
+            will_replace_chunks += n;
+        }
+    }
+    Ok(TextIngestPreview {
+        will_replace_chunks,
+        affected_files,
+    })
+}
+
+/// 文本文件 / 文件夹入库：读文本 → 分块 → BGE-M3 编码 → 落 `text_entries`。
+///
+/// `paths` 可以是文件（按扩展名过滤）或文件夹（递归找 `.md/.txt/...`）。
+/// 长文档自动切片，块信息记在 `metadata_json`（chunk_index / chunk_count）。
+#[tauri::command]
+pub async fn ingest_text_files(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<TextIngestResult, String> {
+    let started = Instant::now();
+    let mut ingested: Vec<String> = Vec::new();
+    let mut chunks_total = 0usize;
+    // M0''' 告知：累计重新导入时被替换掉的旧块数
+    let mut deleted_old_chunks = 0usize;
+
+    // 1) 展开目标文件（与 preview_text_ingest 同口径）
+    let (targets, mut failed) = expand_targets(&paths);
 
     // 2) 逐文件处理：读 → 分块 → 编码（不持锁）→ 落库（一次锁）
     for path in &targets {
@@ -278,35 +317,40 @@ pub async fn ingest_text_files(
                 Ok(tx) => {
                     // P1-11 E8：ingest 前先删旧块——第二次 ingest 同一文件若分块数变少，
                     // 旧的高 idx 块不会被 INSERT OR REPLACE 覆盖，会永久残留。
-                    if let Err(e) = text_store::delete_text_entries_by_source(&tx, path) {
-                        let _ = tx.rollback();
-                        err = Some(format!("Failed to delete old chunks: {}", e));
-                    } else {
-                        let mut insert_err: Option<String> = None;
-                        for (idx, chunk, dense) in &encoded {
-                            // entry_id 由 Rust 侧生成 `{来源}#{块号}`：便于按来源文件聚合管理
-                            let entry_id = format!("{}#{}", path, idx);
-                            let meta = json!({
-                                "chunk_index": idx,
-                                "chunk_count": chunks.len(),
-                                "source": "file",
-                            })
-                            .to_string();
-                            if let Err(e) = text_store::insert_text_entry(
-                                &tx, &entry_id, path, chunk, dense, Some(&meta),
-                            ) {
-                                insert_err = Some(e);
-                                break;
-                            }
+                    // M0''' 告知：记录被删除的旧块数，回传前端让用户知道删了多少。
+                    match text_store::delete_text_entries_by_source(&tx, path) {
+                        Err(e) => {
+                            let _ = tx.rollback();
+                            err = Some(format!("Failed to delete old chunks: {}", e));
                         }
-                        match insert_err {
-                            Some(e) => {
-                                let _ = tx.rollback();
-                                err = Some(e);
+                        Ok(removed) => {
+                            deleted_old_chunks += removed;
+                            let mut insert_err: Option<String> = None;
+                            for (idx, chunk, dense) in &encoded {
+                                // entry_id 由 Rust 侧生成 `{来源}#{块号}`：便于按来源文件聚合管理
+                                let entry_id = format!("{}#{}", path, idx);
+                                let meta = json!({
+                                    "chunk_index": idx,
+                                    "chunk_count": chunks.len(),
+                                    "source": "file",
+                                })
+                                .to_string();
+                                if let Err(e) = text_store::insert_text_entry(
+                                    &tx, &entry_id, path, chunk, dense, Some(&meta),
+                                ) {
+                                    insert_err = Some(e);
+                                    break;
+                                }
                             }
-                            None => {
-                                if let Err(e) = tx.commit() {
-                                    err = Some(format!("Commit failed: {}", e));
+                            match insert_err {
+                                Some(e) => {
+                                    let _ = tx.rollback();
+                                    err = Some(e);
+                                }
+                                None => {
+                                    if let Err(e) = tx.commit() {
+                                        err = Some(format!("Commit failed: {}", e));
+                                    }
                                 }
                             }
                         }
@@ -356,6 +400,7 @@ pub async fn ingest_text_files(
         ingested_files: ingested,
         chunks: chunks_total,
         failed,
+        deleted_old_chunks,
     })
 }
 

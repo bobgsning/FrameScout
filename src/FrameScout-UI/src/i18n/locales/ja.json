@@ -106,7 +106,47 @@
     "deleteBackupMessage": "バックアップ「{name}」を削除しますか？",
     "integrityOk": "✅ データベースの整合性チェックに合格",
     "integrityResult": "⚠️ 整合性チェック結果：{result}",
-    "verifyFailed": "検証に失敗：{err}"
+    "verifyFailed": "検証に失敗：{err}",
+    "historyLimit": "🕘 検索履歴の上限",
+    "historyLimitHint": "直近の検索を何件保持するか。「無制限」にすると静かな切り捨てを止めます。",
+    "historyEntries": "{n} 件保持",
+    "unlimited": "無制限",
+    "never": "削除しない",
+    "days": "{n} 日",
+    "cleanupTitle": "🧹 自動クリーンアップ",
+    "cleanupHint": "これらのルールは起動時に実行されます。「削除しない／無制限」なら何も勝手に削除しません。",
+    "eventRetention": "イベント履歴の保持期間",
+    "backupKeepCount": "保持するバックアップ数",
+    "backupMaxAge": "バックアップの保持日数",
+    "backupCopies": "{n} 件",
+    "cleanupSummary": "🧹 起動時の自動クリーンアップ：",
+    "cleanupEvents": "古いイベント記録を {n} 件削除",
+    "cleanupBatches": "古いバッチ記録を {n} 件削除",
+    "cleanupBackups": "古いコールドバックアップを {n} 行削除",
+    "cleanupRows": "不要なレコードを {n} 件削除",
+    "cleanupLoadFailed": "⚠️ クリーンアップ設定の読み込みに失敗：{err}",
+    "cleanupSaveFailed": "⚠️ クリーンアップ設定の保存に失敗：{err}",
+    "backupCreatedWithRotation": "✅ バックアップ作成：{path}。空きを作るため古いバックアップを削除：{removed}",
+    "restoreBackup": "バックアップを復元",
+    "restoreBackupTitle": "このバックアップを復元しますか？",
+    "restoreBackupMessage": "「{name}」を復元しますか？現在のデータベースは置き換えられ、次回起動時に反映されます。",
+    "restorePending": "♻️ 復元を予約しました——次回起動時に反映されます。",
+    "restorePendingDetail": "♻️ 復元を予約（現在 {current} フレーム → バックアップ {backup} フレーム）。現在のデータベースを先に自動バックアップ済み。",
+    "restoreFramesCompare": "現在 {current} フレーム → バックアップ {backup} フレーム。",
+    "restoreWillLose": "{n} フレームが失われます。",
+    "restoreWillGain": "{n} フレームが増えます。",
+    "restoreSameCount": "フレーム数は同じ。",
+    "restoreFailed": "⚠️ 復元に失敗：{err}",
+    "lastCleanup": "前回起動時のクリーンアップ：",
+    "lastCleanupNone": "前回起動時にクリーンアップはありませんでした。",
+    "relevanceSensitivity": "🎚️ 関連度の感度",
+    "relevanceSensitivityHint": "「関連あり」の基準を変えます。ゆるめは多く、きつめは最も似たものだけ返します。",
+    "sensitivityLoose": "ゆるめ",
+    "sensitivityStandard": "標準",
+    "sensitivityStrict": "きつめ",
+    "lowScoreFold": "低スコア結果を自動折りたたみ",
+    "lowScoreFoldHint": "オンにすると低信頼の画像を既定で折りたたみます。オフなら常に全展開で表示。",
+    "cleanupAt": "{at}"
   },
   "scan": {
     "capture": "📥 取り込み",
@@ -149,7 +189,9 @@
     "stop": "⏹ 停止",
     "progress": "解析の進行状況：{current} / {total}、",
     "eta": "経過 {elapsed} · 残り {eta}",
-    "awaiting": "シグナル待機中..."
+    "awaiting": "シグナル待機中...",
+    "pause": "⏸ 一時停止",
+    "resume": "▶ 再開"
   },
   "incoming": {
     "banner": "📥 新しい{count, plural, =1 {画像} other {画像}}が {count} 件インデックスされました。クリックして表示。"
@@ -237,7 +279,12 @@
     "empty": "まだ記録がありません——スキャンを実行するとレポートがここに表示されます。",
     "dirDistribution": "ディレクトリ分布",
     "failedFiles": "失敗ファイル（{count}）",
-    "noSummary": "（この実行にはサマリーが残っていません）"
+    "noSummary": "（この実行にはサマリーが残っていません）",
+    "searchPlaceholder": "バッチIDまたは種類で絞り込み…",
+    "retry": "再試行",
+    "retrying": "再試行中…",
+    "retried": "✅ {count} ファイルを再インデックス",
+    "retryFailed": "⚠️ 再試行に失敗：{err}"
   },
   "search": {
     "filename": "📁 ファイル名",
@@ -267,7 +314,14 @@
     "history": "検索履歴",
     "clearHistory": "履歴をクリア",
     "removeHistory": "この項目を削除",
-    "clearQuery": "入力をクリア"
+    "clearQuery": "入力をクリア",
+    "rewriteHint": "単語は空白で区切ってAND検索 · 「-」で除外 · 「|」でOR · 「単語@スコア」で最低スコア指定 · 全角文字は半角に折りたたみ",
+    "sourceFilter": "ソース",
+    "allSources": "すべてのソース",
+    "fromDate": "インデックス開始",
+    "toDate": "インデックス終了",
+    "visualIgnoresQuery": "検索キーワードは画像検索には使われません——ここでは見た目のみで一致します。",
+    "allTargetsOffHint": "すべての検索チャンネルがオフです——既定で「ファイル名 + ノート + テキスト認識」で検索します。"
   },
   "pagination": {
     "showingAll": "📂 全 {total} ファイルを表示中（ページングなし）",
@@ -305,7 +359,11 @@
     "clickToExpand": "クリックで展開 / 折りたたみ",
     "deleteConfirmTitle": "テキスト項目を完全に削除しますか？",
     "deleteConfirmMessage": "選択した {count} 件を完全に削除しますか？",
-    "deleteConfirmDetail": "削除は最終的で元に戻せません。"
+    "deleteConfirmDetail": "削除は最終的で元に戻せません。",
+    "ingestConfirmTitle": "既存項目を置き換えますか？",
+    "ingestConfirmMessage": "インポートすると {files} 個の出典ファイルにある {count} 個の既存チャンクが置き換わります。",
+    "ingestConfirmDetail": "置き換わった旧チャンクはすぐに削除され、復元できません。",
+    "ingestConfirmGo": "置き換えてインポート"
   },
   "cards": {
     "lowConfidence": "低確信度（{score}）",
@@ -343,7 +401,9 @@
     "copy": "コピー",
     "copied": "✅ コピーしました",
     "copyFailed": "⚠️ コピーに失敗",
-    "remainingChars": "さらに {count} 文字"
+    "remainingChars": "さらに {count} 文字",
+    "literalHitNote": "テキスト一致（OCR／メモ／ファイル名）は二値ヒットです——「✓」はキーワードが見つかったことを示し、正確な関連度スコアではありません。",
+    "literalHitBadge": "✓ 一致"
   },
   "cluster": {
     "title": "🧩 視覚的類似クラスター",
@@ -437,7 +497,15 @@
     "confirmDelete": "スマートフォルダ「{name}」を削除しますか？元に戻せません。",
     "deleted": "🗑️ スマートフォルダ「{name}」を削除しました",
     "deleteFailed": "⚠️ 削除に失敗：{err}",
-    "execFailed": "⚠️ スマートフォルダの実行に失敗：{err}"
+    "execFailed": "⚠️ スマートフォルダの実行に失敗：{err}",
+    "stillRunning": "実行中…",
+    "export": "スマートフォルダをエクスポート（JSON）",
+    "import": "スマートフォルダをインポート（JSON）",
+    "importInvalid": "⚠️ ファイルが無効：スマートフォルダが見つかりません",
+    "imported": "✅ {count} 個のスマートフォルダをインポート",
+    "importFailed": "⚠️ インポートに失敗：{err}",
+    "condCountHint": "複数条件の行を使用 — 件数は開いたときに計算されます。",
+    "importRenamed": "名前が衝突した {count} 件のフォルダに番号を付与しました"
   },
   "toast": {
     "databaseLocked": "データベースがビジーです。しばらくしてから再試行してください",
@@ -504,7 +572,11 @@
     "nothingProcessed": "⚠️ 処理されませんでした（{count} 件は状態不一致のためスキップ）",
     "processed": "✅ {count} 項目 / {frames} ベクトル行を処理",
     "skipped": "{count} 件は状態不一致のためスキップ",
-    "freshIndex": "✨ 新規インデックス"
+    "freshIndex": "✨ 新規インデックス",
+    "scanPaused": "⏸ スキャン一時停止",
+    "pauseFailed": "一時停止に失敗：{err}",
+    "scanResumed": "▶ スキャン再開",
+    "resumeFailed": "再開に失敗：{err}"
   },
   "searcher": {
     "loadFilesFailed": "⚠️ ファイルの読み込みに失敗：{err}",
@@ -514,7 +586,18 @@
     "visualSeeking": "[ビジュアルモード] 意味の共鳴を探しています...",
     "loadAllFailed": "⚠️ 全ファイルの読み込みに失敗：{err}",
     "textAdded": "✅ テキスト項目として追加しました",
-    "insertFailed": "⚠️ テキスト項目の挿入に失敗：{err}"
+    "insertFailed": "⚠️ テキスト項目の挿入に失敗：{err}",
+    "pureNegative": "⚠️ このクエリは除外語のみです（例「-cat」）。検索には少なくとも1つのキーワードを追加してください。",
+    "needPositive": "⚠️ 検索には少なくとも1つの肯定条件（キーワード・画像・ビジュアル）を追加してください。",
+    "conditionFailed": "⚠️ 一部の条件の検索に失敗：{labels}",
+    "estimateResult": "約 {n} 件",
+    "estimateBge": "テキスト意味（BGE）条件はまだ実験的機能です。検索を実行して結果を確認してください。",
+    "lastSession": "前回の検索：{what}",
+    "restoreSession": "復元",
+    "dismissSession": "閉じる",
+    "restoredImage": "画像で検索",
+    "restoredQueryAndConds": "「{q}」＋条件 {n} 件",
+    "restoredConds": "条件 {n} 件"
   },
   "textEntries": {
     "loadFailed": "⚠️ 読み込みに失敗：{err}",
@@ -523,7 +606,8 @@
     "ingesting": "⏳ ライブラリにエンコード中（長い文書は分割されます）...",
     "failedCount": "{count} 件失敗",
     "ingested": "✅ {files} ファイル / {chunks} チャンクをインデックス{failedNote}",
-    "ingestFailed": "⚠️ インデックスに失敗：{err}"
+    "ingestFailed": "⚠️ インデックスに失敗：{err}",
+    "replacedChunks": "古いチャンクを {count} 件置換"
   },
   "api": {
     "saveNoteFailed": "メモの保存に失敗",
@@ -586,5 +670,48 @@
   "score": {
     "perfect": "🔥 100.0%",
     "match": "{icon} {score}% 一致"
+  },
+  "cond": {
+    "typeText": "テキスト",
+    "typeVisual": "ビジュアル",
+    "typeExclude": "除外",
+    "typeTime": "時間",
+    "typePath": "フォルダ",
+    "typeBatch": "ソースバッチ",
+    "typeTextSemantic": "テキスト意味（BGE）",
+    "typeTextEntry": "テキストエントリ",
+    "valuePlaceholder": "値…",
+    "in": "対象",
+    "minScore": "最低",
+    "noLimit": "制限なし",
+    "pathPlaceholder": "D:\\フォルダ\\…",
+    "remove": "この条件を削除",
+    "files": "ファイル",
+    "groupLabel": "これらの条件",
+    "groupAll": "すべて満たす",
+    "groupAny": "いずれか満たす",
+    "activeCount": "{n} 件の有効条件",
+    "empty": "追加条件はありません——上にキーワードを入力するか、条件を追加してください。",
+    "addCondition": "条件を追加",
+    "clearAll": "すべて削除",
+    "sortBy": "並び替え",
+    "sortByMain": "{label} の一致度",
+    "defaultSort": "最初の条件",
+    "typeFileType": "ファイル種別",
+    "typeSeed": "基準画像",
+    "typeImages": "画像",
+    "typeVideos": "動画",
+    "alsoText": "＋テキストでも",
+    "pickImage": "画像を選ぶ",
+    "today": "今日",
+    "d7": "7日間",
+    "d30": "30日間",
+    "thisMonth": "今月",
+    "thisYear": "今年",
+    "sortByTime": "新しい順",
+    "sortByName": "ファイル名",
+    "estimate": "件数だけ試算",
+    "estimating": "試算中…",
+    "estimateHint": "結果は表示せず、件数だけを数えます"
   }
 }

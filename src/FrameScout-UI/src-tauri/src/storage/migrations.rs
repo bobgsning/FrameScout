@@ -25,7 +25,7 @@ use crate::time_util::{utc_now_iso, utc_stamp};
 use super::journal;
 
 /// 当前代码期望的 schema 版本。必须等于 MIGRATIONS 最后一项的 to_version。
-pub const SCHEMA_VERSION: u32 = 9;
+pub const SCHEMA_VERSION: u32 = 11;
 
 /// frame_vectors 的最新目标 DDL。全新库（M001）与重建表（M002/M003）共用同一份，
 /// 杜绝「两处 DDL 各写一份、日后漂移」的问题。
@@ -114,6 +114,18 @@ const MIGRATIONS: &[Migration] = &[
         to_version: 9,
         name: "fts5_trigram",
         apply: m009_fts5_trigram,
+    },
+    Migration {
+        from_version: 9,
+        to_version: 10,
+        name: "app_settings",
+        apply: m010_app_settings,
+    },
+    Migration {
+        from_version: 10,
+        to_version: 11,
+        name: "smart_folder_criteria",
+        apply: m011_smart_folder_criteria,
     },
 ];
 
@@ -209,7 +221,8 @@ fn m001_baseline_schema(tx: &Transaction) -> rusqlite::Result<()> {
             use_vector INTEGER DEFAULT 1,
             use_ocr INTEGER DEFAULT 1,
             use_note INTEGER DEFAULT 1,
-            use_filename INTEGER DEFAULT 1
+            use_filename INTEGER DEFAULT 1,
+            criteria_json TEXT
         );",
         FRAME_VECTORS_DDL
     ))
@@ -484,6 +497,45 @@ fn m009_fts5_trigram(tx: &Transaction) -> rusqlite::Result<()> {
         )?;
     }
 
+    Ok(())
+}
+
+/// M010 · 应用设置键值表（M0''' 哲学合规止血：自动清理给开关）。
+///
+/// 生命周期清理策略（事件保留天数、备份份数/天数）必须落在 SQLite 而非
+/// localStorage——因为裁剪发生在启动期、前端尚未就绪，localStorage 存在
+/// 「鸡生蛋」问题（想读偏好时页面还没加载）。
+///
+/// 键值表：`key TEXT PRIMARY KEY, value TEXT`。值一律存字符串，由读取方按语义解析；
+/// 「永不 / 不限」用哨兵 `-1` 表示。默认值由读取方在缺失时兜底（与旧行为一致）。
+fn m010_app_settings(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );",
+    )
+}
+
+/// M011 · 智能文件夹存「完整条件行」（第七轮条件行重构的落地）。
+///
+/// 问题：智能文件夹表只有旧的 7 个字段（query_text + 4 个通道开关），
+/// 于是保存时**静默丢弃**排除条件、分条件阈值、时间/目录/批次/类型条件 ——
+/// 用户在界面上摆好一排条件，存成文件夹后语义就变了。
+///
+/// 做法：加一列 `criteria_json`，存前端条件行数组的序列化（设计文档第七节
+/// 「多条件行 → `criteria_json`」）。旧文件夹该列为 NULL，仍走旧字段路径，
+/// 因此**不需要数据迁移、不破坏既有文件夹**。
+///
+/// 幂等性：列已存在（全新库由 M001 直接建出）时直接 no-op。
+fn m011_smart_folder_criteria(tx: &Transaction) -> rusqlite::Result<()> {
+    if !table_exists(tx, "smart_folders") {
+        return Ok(());
+    }
+    if has_column(tx, "smart_folders", "criteria_json") {
+        return Ok(());
+    }
+    tx.execute("ALTER TABLE smart_folders ADD COLUMN criteria_json TEXT", [])?;
     Ok(())
 }
 

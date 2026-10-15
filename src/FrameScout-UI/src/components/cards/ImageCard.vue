@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
 import { getAssetUrl } from '@/utils/media'
-import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore } from '@/utils/score'
+import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore, SEMANTIC_BADGE_THRESHOLD } from '@/utils/score'
 import { highlight } from '@/utils/highlight'
 import OcrPanel from './OcrPanel.vue'
 import NotePanel from './NotePanel.vue'
@@ -22,11 +22,13 @@ const emit = defineEmits<{
 // 方案 C：文字搜索走结构化自决映射；以图搜图 / BGE 保持原映射。
 const scoreText = computed(() => {
   if (props.item.scoreKind === 'bge') return formatScore(props.item.score, false, 'bge')
+  if (props.item.scoreKind === 'image') return formatScore(props.item.score, true)
   if (props.isImageSearch) return formatScore(props.item.score, true)
   return formatSearchScore(props.item)
 })
 const numericScore = computed(() => {
   if (props.item.scoreKind === 'bge') return getNumericScore(props.item.score, false, 'bge')
+  if (props.item.scoreKind === 'image') return getNumericScore(props.item.score, true)
   if (props.isImageSearch) return getNumericScore(props.item.score, true)
   return getSearchNumericScore(props.item)
 })
@@ -73,13 +75,13 @@ const visibleTags = computed(() =>
            纯向量（语义）匹配时 visibleTags 为空，应在此显示 💡 Semantic；
            否则若既无其它标签又低分，显示 👻 Low Confidence。 -->
       <span
-        v-if="numericScore >= 60.0 && visibleTags.length === 0"
+        v-if="numericScore >= SEMANTIC_BADGE_THRESHOLD && visibleTags.length === 0"
         class="tag-badge semantic-tag"
       >
         {{ $t('cards.semantic') }}
       </span>
       <span
-        v-if="numericScore < 60.0 && visibleTags.length === 0"
+        v-if="numericScore < SEMANTIC_BADGE_THRESHOLD && visibleTags.length === 0"
         class="tag-badge low-tag"
       >
         {{ $t('cards.lowConfidenceBadge') }}

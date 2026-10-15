@@ -18,10 +18,15 @@ use crate::model_code::{AppState, OcrLineHit};
 use crate::services::request_vector;
 use crate::proto::framescout as proto;
 use crate::constants::RPC_TIMEOUT_SEARCH_MS;
-use crate::commands::search_cmd::{normalize_query, match_text, fetch_ocr_hit_lines};
+use crate::commands::search_cmd::{
+    normalize_query, match_text, fetch_ocr_hit_lines, matches_file_types,
+};
 use crate::storage::path_key;
 
 /// 统一搜索：单遍扫描矩阵，融合三通道，返回统一列表 + 结构化命中来源。
+///
+/// M2''' 分区搜索（P1-4）：新增可选过滤参数——来源批次 / 根目录前缀 / 入库时间范围。
+/// 后端只做「事实性过滤」，不改变打分口径（仍只回原始余弦 + 命中布尔）。
 #[tauri::command]
 pub async fn search_unified(
     state: State<'_, AppState>,
@@ -32,6 +37,11 @@ pub async fn search_unified(
     use_ocr: bool,
     use_note: bool,
     use_filename: bool,
+    batch_id: Option<String>,
+    root_path: Option<String>,
+    index_time_from: Option<f64>,
+    index_time_to: Option<f64>,
+    file_types: Option<Vec<String>>,
 ) -> Result<UnifiedSearchResponse, String> {
     {
         let memory = state.memory_db.read().map_err(|e| e.to_string())?;
@@ -68,7 +78,70 @@ pub async fn search_unified(
 
     let mut results: Vec<UnifiedSearchResult> = Vec::new();
 
+    // M2''' 分区搜索：按批次过滤时，先从 SQL 取该批次的所有路径，构建大小写折叠键集合。
+    let batch_paths: Option<std::collections::HashSet<String>> = match &batch_id {
+        Some(bid) if !bid.is_empty() => {
+            let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+            let mut stmt = db
+                .prepare("SELECT DISTINCT path FROM frame_vectors WHERE indexed_in_batch_id = ?1")
+                .map_err(|e| e.to_string())?;
+            let paths: Vec<String> = stmt
+                .query_map(rusqlite::params![bid], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok())
+                .collect();
+            drop(stmt);
+            let set: std::collections::HashSet<String> = paths.iter().map(|p| path_key(p)).collect();
+            Some(set)
+        }
+        _ => None,
+    };
+
+    // M2''' 分区搜索：根目录前缀过滤（大小写不敏感、`\`/`/` 规范化、目录边界）。
+    // 修复（第七轮）：旧实现用裸 `starts_with` 且未规范化分隔符，
+    //   `C:\Users\a` 会误匹配 `C:\Users\abc`；`\` 与 `/` 混用也会漏匹配。
+    let root_prefix: Option<String> = root_path.as_ref().map(|root| {
+        let trimmed = root.trim();
+        if trimmed.is_empty() {
+            // 第七轮核查修复：空串会被 push 成 `"\`，把全部结果过滤掉。
+            // 空目录条件 = 不限，返回空串并由下方 `!prefix.is_empty()` 跳过。
+            return String::new();
+        }
+        let mut r = path_key(trimmed); // 规范化 + 小写 + 折叠分隔符
+        if !r.ends_with('\\') {
+            r.push('\\'); // 目录边界：确保按目录而非文件名前缀匹配
+        }
+        r
+    });
+
     for (idx, meta) in memory.metadata.iter().enumerate() {
+        if let Some(prefix) = &root_prefix {
+            if !prefix.is_empty() && !path_key(&meta.path).starts_with(prefix) {
+                continue;
+            }
+        }
+        // M2''' 分区搜索：入库时间范围过滤。
+        if let Some(from) = index_time_from {
+            if meta.index_time < from {
+                continue;
+            }
+        }
+        if let Some(to) = index_time_to {
+            if meta.index_time > to {
+                continue;
+            }
+        }
+        // M2''' 分区搜索：来源批次过滤。
+        if let Some(set) = &batch_paths {
+            if !set.contains(&path_key(&meta.path)) {
+                continue;
+            }
+        }
+        // 第七轮：file_type 条件（图片 / 视频）。
+        if !matches_file_types(&meta.path, file_types.as_deref().unwrap_or(&[])) {
+            continue;
+        }
+
         let mut matches: Vec<ChannelMatch> = Vec::new();
         let mut ocr_hit = false;
         let mut note_hit = false;
@@ -84,7 +157,7 @@ pub async fn search_unified(
             });
         }
 
-        // OCR / 笔记 / 文件名：走 normalize_query + match_text（切词 AND + 排除词）。
+        // OCR / 笔记 / 文件名：走 normalize_query + match_text（切词 AND，无符号语法）。
         if use_ocr && !meta.ocr_text.is_empty() && match_text(&meta.ocr_text.to_lowercase(), &query_tokens) {
             ocr_hit = true;
             matches.push(ChannelMatch { channel: "ocr".to_string(), score: 1.0 });
@@ -160,8 +233,14 @@ pub async fn search_unified(
     }
 
     let total_count = unique.len();
-    let start = (page.saturating_sub(1)) * limit;
-    let items = unique.into_iter().skip(start).take(limit).collect();
+    // M2''' 布尔搜索：`limit == 0` 表示「返回全部原始命中、不截断分页」，
+    // 供前端做 OR/AND/NOT 的集合组合。后端仍只回原始分，不做任何组合判定。
+    let items = if limit == 0 {
+        unique
+    } else {
+        let start = (page.saturating_sub(1)) * limit;
+        unique.into_iter().skip(start).take(limit).collect()
+    };
 
     Ok(UnifiedSearchResponse { items, total_count })
 }

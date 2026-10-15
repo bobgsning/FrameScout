@@ -14,6 +14,11 @@ use crate::proto::framescout as proto;
 use crate::services::{request_text_dense, request_text_entry, request_vector};
 use crate::storage::text_store::{insert_text_entry as store_text_entry, BGE_MODEL_TAG};
 use crate::storage::vector_blob::decode_f32_le_checked;
+// 第七轮核查修复：本文件原先有一份私有 `path_key`（`\`→`/`），
+// 与 `storage::path_key`（normalize_path，统一为 `\`）形态相反，
+// 导致 root_prefix 拼接出 `c:/users/a\` 这种永不匹配的前缀 ——
+// 「以图搜图 + 目录条件」恒 0 结果。现统一使用 storage 版本，与 search_unified_cmd 同口径。
+use crate::storage::path_key;
 
 // =========================================================================
 //  查询预处理与融合打分（P0-3 / P0-4 / 第三轮 A1-A7）
@@ -41,14 +46,17 @@ fn fold_fullwidth(s: &str) -> String {
     }).collect()
 }
 
-/// 切词后的查询：正向词必须全部命中（AND 语义），负向词（`-xxx`）必须全部不命中。
+/// 切词后的查询：正向词必须全部命中（AND 语义）。
+/// 第七轮核查修复：原先这里还有 `negative`（`-xxx` 排除词）语义，
+/// 前端逻辑搜索重构已经把 `-` 从「语法」降级为「普通字符」，
+/// 但后端仍在悄悄执行排除 —— 用户敲 `e-mail` / `-5°C` 会被改写。
+/// 现彻底移除负向语义：**用户输入即意图**，`-` 只是普通字符。
 #[derive(Default, Clone)]
 pub(crate) struct QueryTokens {
     pub(crate) positive: Vec<String>,
-    pub(crate) negative: Vec<String>,
 }
 
-/// 查询预处理：trim → 全角折叠 → 小写 → 切词 → 正负分离。
+/// 查询预处理：trim → 全角折叠 → 小写 → 切词（多词 AND）。
 pub(crate) fn normalize_query(text: &str) -> QueryTokens {
     let folded = fold_fullwidth(text.trim());
     let lower = folded.to_lowercase();
@@ -57,26 +65,18 @@ pub(crate) fn normalize_query(text: &str) -> QueryTokens {
         if tok.is_empty() {
             continue;
         }
-        if let Some(stripped) = tok.strip_prefix('-') {
-            if !stripped.is_empty() {
-                tokens.negative.push(stripped.to_string());
-            }
-        } else {
-            tokens.positive.push(tok.to_string());
-        }
+        tokens.positive.push(tok.to_string());
     }
     tokens
 }
 
 /// 在已小写的 haystack 上做切词 AND 匹配。
 /// - 全部 positive token 必须 substring 命中；
-/// - 任何 negative token 不得 substring 命中；
 /// - positive 为空时视为「不参与字面量匹配」（返回 false）。
-///   债单 B11/C1 修复：纯负向查询（如 `-cat`）positive 为空，若只看负词，
-///   会让所有不含 cat 的文件都「命中」并计 0.4 分 ⇒ 召回全库。现在直接返回 false。
+///   债单 B11/C1 修复：空查询会让所有文件都「命中」并计分 ⇒ 召回全库，故直接返回 false。
 pub(crate) fn match_text(haystack_lower: &str, tokens: &QueryTokens) -> bool {
     if tokens.positive.is_empty() {
-        // 无正向词（空查询或纯负向查询）：字面量通道不参与打分。
+        // 无正向词（空查询）：字面量通道不参与打分。
         return false;
     }
     for tok in &tokens.positive {
@@ -84,18 +84,34 @@ pub(crate) fn match_text(haystack_lower: &str, tokens: &QueryTokens) -> bool {
             return false;
         }
     }
-    for tok in &tokens.negative {
-        if haystack_lower.contains(tok) {
-            return false;
-        }
-    }
     true
 }
 
-/// 路径归一化键：用于「帧级命中收敛到文件级」的去重与「以图搜图排除自身」。
-/// 与 search_cmd 内现有去重逻辑保持同一形态（to_lowercase + 反斜杠→正斜杠）。
-fn path_key(path: &str) -> String {
-    path.to_lowercase().replace("\\", "/")
+/// 路径归一化键：统一走 `crate::storage::path_key`（`normalize_path` + 小写）。
+/// 第七轮核查修复：原先本文件自带一份 `to_lowercase().replace("\\", "/")` 的私有实现，
+/// 与 storage 版（分隔符为 `\`）形态相反，已删除 —— 见文件头的 use 说明。
+
+/// 文件类型归类（第七轮 `file_type` 条件用）：库里的媒体条目非视频即图片。
+/// 与前端 `utils/media.ts::isVideo` 的扩展名集合保持一致。
+pub(crate) fn file_kind(path: &str) -> &'static str {
+    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+    match ext.as_str() {
+        "mp4" | "mov" | "avi" | "mkv" | "webm" | "wmv" | "flv" | "m4v" | "mpg" | "mpeg" | "ts"
+        | "3gp" | "ogv" => "video",
+        _ => "image",
+    }
+}
+
+/// `file_types` 过滤（空 / None = 不限）。
+pub(crate) fn matches_file_types(path: &str, types: &[String]) -> bool {
+    if types.is_empty() {
+        return true;
+    }
+    let kind = file_kind(path);
+    types.iter().any(|t| {
+        let t = t.trim().to_lowercase();
+        t == kind || (t == "images" && kind == "image") || (t == "videos" && kind == "video")
+    })
 }
 
 /// 从 `media_ocr_entries` 查询命中文件的相关 OCR 行（P1-2 / 第三轮 A22）。
@@ -136,20 +152,12 @@ pub(crate) fn fetch_ocr_hit_lines(
         for row in rows.flatten() {
             let (text, bl, bt, br, bb, conf, ts_ms) = row;
             let text_lower = text.to_lowercase();
-            // 命中判定：positive 全部命中，negative 全部不命中（与 match_text 同口径）
+            // 命中判定：positive 全部命中（与 match_text 同口径）
             let mut ok = true;
             for tok in &tokens.positive {
                 if !text_lower.contains(tok) {
                     ok = false;
                     break;
-                }
-            }
-            if ok {
-                for tok in &tokens.negative {
-                    if text_lower.contains(tok) {
-                        ok = false;
-                        break;
-                    }
                 }
             }
             if ok {
@@ -179,163 +187,16 @@ pub async fn ping_engine() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn search_images(
-    state: State<'_, AppState>,
-    text: String,
-    page: usize,
-    limit: usize,
-    use_vector: bool,
-    use_ocr: bool,
-    use_note: bool,
-    use_filename: bool,
-) -> Result<PagedResponse, String> {
-    {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
-        if memory.is_empty() {
-            return Err("Memory Matrix is empty! Please scan a folder first.".to_string());
-        }
-    }
-
-    let search_started = Instant::now();
-
-    let mut text_vec = Vec::new();
-    if use_vector {
-        let text_frames = request_vector(proto::encode_request::Payload::Text(text.clone()), RPC_TIMEOUT_SEARCH_MS)?;
-        if !text_frames.is_empty() {
-            text_vec = text_frames[0].vector.clone();
-        }
-    }
-
-    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
-    if memory.is_empty() {
-        return Err("Memory Matrix is empty!".to_string());
-    }
-
-    let vector_scores = if use_vector && !text_vec.is_empty() {
-        memory.search(&text_vec, memory.len())
-    } else {
-        Vec::new()
-    };
-
-    let score_map: std::collections::HashMap<usize, f32> = vector_scores.into_iter().collect();
-    // 查询预处理（P0-4）：trim + 全角折叠 + 小写 + 切词 AND + 排除词。
-    // 旧实现只做 to_lowercase，复制粘贴带尾随空格直接 0 结果。
-    let query_tokens = normalize_query(&text);
-    let mut results: Vec<SearchResult> = Vec::new();
-
-    for (idx, meta) in memory.metadata.iter().enumerate() {
-        let raw_cosine = *score_map.get(&idx).unwrap_or(&0.0);
-        let mut matched_tags = Vec::new();
-        let mut ocr_hit = false;
-        let mut note_hit = false;
-        let mut filename_hit = false;
-
-        // 视觉通道（方案 C「后端不做决定」）：直接返回原始 SigLIP 余弦，
-        // 不 sigmoid、不加权。前端 mapToHumanScore 用 0.025~0.15 阈值自决映射。
-        let visual_similarity = if use_vector { raw_cosine } else { 0.0 };
-        if visual_similarity > 0.001 {
-            matched_tags.push("💡 Semantic".to_string());
-        }
-
-        if use_ocr
-            && !meta.ocr_text.is_empty()
-            && match_text(&meta.ocr_text.to_lowercase(), &query_tokens)
-        {
-            ocr_hit = true;
-            matched_tags.push("🔍 OCR".to_string());
-        }
-        if use_note
-            && !meta.user_note.is_empty()
-            && match_text(&meta.user_note.to_lowercase(), &query_tokens)
-        {
-            note_hit = true;
-            matched_tags.push("📝 Note".to_string());
-        }
-        if use_filename && match_text(&meta.path.to_lowercase(), &query_tokens) {
-            filename_hit = true;
-            matched_tags.push("📁 Filename".to_string());
-        }
-
-        // score 排序键：视觉命中 = 原始余弦；纯字面命中 = 命中通道数(0~3)。
-        let hit_count = (ocr_hit as u8 + note_hit as u8 + filename_hit as u8) as f32;
-        let score = if visual_similarity > 0.001 {
-            visual_similarity
-        } else {
-            hit_count
-        };
-
-        let is_hit = visual_similarity > 0.001 || ocr_hit || note_hit || filename_hit;
-        if is_hit {
-            // P1-2：OCR 通道命中时，从 media_ocr_entries 查询命中行（含 bbox）。
-            let ocr_lines = if ocr_hit {
-                let db = state.db_conn.lock().map_err(|e| e.to_string())?;
-                fetch_ocr_hit_lines(&db, &meta.path, &query_tokens)
-            } else {
-                Vec::new()
-            };
-            let match_count = ocr_lines.len() as u32;
-
-            results.push(SearchResult {
-                path: meta.path.clone(),
-                timestamp: meta.timestamp,
-                score,
-                matched_tags,
-                ocr_text: meta.ocr_text.clone(),
-                user_note: meta.user_note.clone(),
-                index_time: meta.index_time,
-                ocr_lines,
-                match_count,
-                visual_similarity,
-                ocr_hit,
-                note_hit,
-                filename_hit,
-            });
-        }
-    }
-
-    // 稳定排序 + tie-breaker（第三轮 A10）：同分时按 path 升序，
-    // 避免大量同分结果（字面量命中都是 0.9）顺序不定、翻页重复/漏项。
-    results.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.path.cmp(&b.path))
-    });
-
-    // 帧级命中收敛到文件级：results 已按 score 降序排列，故同一路径
-    // 首次命中即为该文件得分最高的那一帧；保留其 timestamp 供前端秒级跳转。
-    // （视频多帧、图片单帧均适用；图片 timestamp 恒为 0.0。）
-    let mut unique_results = Vec::new();
-    let mut seen_paths = std::collections::HashSet::new();
-    for res in results {
-        let normalized = path_key(&res.path);
-        if !seen_paths.contains(&normalized) {
-            seen_paths.insert(normalized);
-            unique_results.push(res);
-        }
-    }
-
-    let total_count = unique_results.len();
-    let start_index = (page.saturating_sub(1)) * limit;
-    let items = unique_results.into_iter().skip(start_index).take(limit).collect();
-
-    fs_trace!(
-        "search done, mode=text, page={}, limit={}, hits={}, took={:?}",
-        page,
-        limit,
-        total_count,
-        search_started.elapsed()
-    );
-
-    Ok(PagedResponse { items, total_count })
-}
-
-#[tauri::command]
 pub async fn search_by_image(
     state: State<'_, AppState>,
     image_path: String,
     page: usize,
     limit: usize,
+    batch_id: Option<String>,
+    root_path: Option<String>,
+    index_time_from: Option<f64>,
+    index_time_to: Option<f64>,
+    file_types: Option<Vec<String>>,
 ) -> Result<PagedResponse, String> {
     {
         let memory = state.memory_db.read().map_err(|e| e.to_string())?;
@@ -367,6 +228,41 @@ pub async fn search_by_image(
         return Err("Memory Matrix is empty!".to_string());
     }
 
+    // M2''' 分区搜索（第七轮「全接」）：以图搜图也支持来源批次 / 根目录 / 时间过滤，
+    // 使「基准图」条件能与时间/目录/批次条件组合，不再静默失效。
+    let batch_paths: Option<std::collections::HashSet<String>> = match &batch_id {
+        Some(bid) if !bid.is_empty() => {
+            let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+            let mut stmt = db
+                .prepare("SELECT DISTINCT path FROM frame_vectors WHERE indexed_in_batch_id = ?1")
+                .map_err(|e| e.to_string())?;
+            let paths: Vec<String> = stmt
+                .query_map(rusqlite::params![bid], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok())
+                .collect();
+            drop(stmt);
+            drop(db);
+            let set: std::collections::HashSet<String> = paths.iter().map(|p| path_key(p)).collect();
+            Some(set)
+        }
+        _ => None,
+    };
+    let root_prefix: Option<String> = root_path.as_ref().map(|root| {
+        let trimmed = root.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        // 第七轮核查修复：原先这里按私有 path_key（分隔符为 `/`）拼了一个 `\`，
+        // 产出 `c:/users/a\` 这种永不匹配的前缀 ⇒ 传了目录条件就恒 0 结果。
+        // 现与 search_unified_cmd 同口径：storage::path_key（分隔符 `\`）+ 尾部补边界。
+        let mut r = path_key(trimmed);
+        if !r.ends_with('\\') {
+            r.push('\\');
+        }
+        r
+    });
+
     let vector_scores = memory.search(search_vec, memory.len());
 
     let mut results: Vec<SearchResult> = vector_scores
@@ -378,6 +274,31 @@ pub async fn search_by_image(
             let meta = &memory.metadata[idx];
             // 排除种子图自身（按 path_key 比较，容忍大小写/分隔符差异）。
             if path_key(&meta.path) == self_key {
+                return None;
+            }
+            // 分区过滤（与 search_unified 同口径）
+            if let Some(prefix) = &root_prefix {
+                if !prefix.is_empty() && !path_key(&meta.path).starts_with(prefix) {
+                    return None;
+                }
+            }
+            if let Some(from) = index_time_from {
+                if meta.index_time < from {
+                    return None;
+                }
+            }
+            if let Some(to) = index_time_to {
+                if meta.index_time > to {
+                    return None;
+                }
+            }
+            if let Some(set) = &batch_paths {
+                if !set.contains(&path_key(&meta.path)) {
+                    return None;
+                }
+            }
+            // 第七轮：file_type 条件（图片 / 视频）
+            if !matches_file_types(&meta.path, file_types.as_deref().unwrap_or(&[])) {
                 return None;
             }
             Some(SearchResult {
@@ -422,8 +343,15 @@ pub async fn search_by_image(
     }
 
     let total_count = unique_results.len();
-    let start_index = (page.saturating_sub(1)) * limit;
-    let items = unique_results.into_iter().skip(start_index).take(limit).collect();
+    // 第八轮核查修复：`limit == 0` 与 search_unified 同约定 —— 表示「返回全部原始命中、
+    // 不截断分页」，供前端做 OR/AND/NOT 的集合组合。此前这里直接 `take(0)` 截断为空，
+    // 导致「以图搜图 + 第二个条件 / 排除 / 换排序」走 L3 拆叶子时基准图叶子恒空 ⇒ 整组 0 结果。
+    let items = if limit == 0 {
+        unique_results
+    } else {
+        let start_index = (page.saturating_sub(1)) * limit;
+        unique_results.into_iter().skip(start_index).take(limit).collect()
+    };
 
     fs_trace!(
         "search done, mode=image, page={}, limit={}, hits={}, took={:?}",

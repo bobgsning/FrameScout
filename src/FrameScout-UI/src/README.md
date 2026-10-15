@@ -123,18 +123,17 @@ apply_ghost_action          → GhostActionResult (paths[], action: mark_dead | 
 run_ocr_for_selected_files  → number (filePaths[], languages[])
 update_note                 → void (path, note, timestamp?)  (timestamp = video frame)
 list_all_files              → { items, total_count } (page, limit)
-search_images               → { items, total_count } (text, page, limit, useVector, useOcr, useNote, useFilename)
-search_by_image             → { items, total_count } (imagePath, page, limit)
+search_by_image             → { items, total_count } (imagePath, page, limit, batchId?, rootPath?, indexTimeFrom?, indexTimeTo?, fileTypes?)
 search_text                 → { items, total_count } (BGE-M3 text semantic)
-search_unified              → { items, total_count } (cross-channel fusion; matches + ocr_lines)
+search_unified              → { items, total_count } (cross-channel fusion; matches + ocr_lines; batchId?/rootPath?/indexTimeFrom?/indexTimeTo?/fileTypes?)
 get_all_files               → SearchResult[]
 cluster_similar_images      → ClusterResult (threshold)   (medoid + sampling + truncation notice)
-get_smart_folders           → SmartFolder[]
-save_smart_folder           → void (name, queryText, useVector, useOcr, useNote, useFilename)
-update_smart_folder         → void (rename / update query)
-refresh_smart_folder_count  → number (id)
+get_smart_folders           → SmartFolder[]   (含 criteria_json + needs_frontend_eval)
+save_smart_folder           → void (name, queryText, useVector, useOcr, useNote, useFilename, criteriaJson?)
+update_smart_folder         → void (rename / update query / criteriaJson?)
+refresh_smart_folder_count  → number (id)     (条件行文件夹返回 0，前端显示 "?")
 delete_smart_folder         → void (id)
-execute_smart_folder        → { items, total_count } (id, page, limit)
+import_smart_folders        → { imported, renamed, names } (folders[]；同名自动加序号后缀)
 ingest_text_files           → number (chunked text ingestion)
 list_timeline               → TimelineDay[]
 last_year_today_count       → number

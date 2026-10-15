@@ -6,10 +6,12 @@
  * 合法完成 = finished_at 非空；崩溃残留会显示成 interrupted，
  * 让用户能看见「那次没跑完」，而不是假装什么都没发生。
  */
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { invoke } from '@tauri-apps/api/core'
 import type { BatchReport } from '@/types/search'
 import { useToast } from '@/composables/useToast'
+import { usePreferences } from '@/composables/usePreferences'
 
 const props = defineProps<{
   open: boolean
@@ -19,9 +21,22 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  /** 第八轮：重试成功后请父组件重新拉批次列表（旧失败项要消失） */
+  (e: 'refresh'): void
 }>()
 
 const expanded = ref<Set<number>>(new Set())
+
+// M2''' 各报告搜索/过滤：按批次 id 或类型关键字过滤活动记录
+const filterQuery = ref('')
+const filteredReports = computed(() => {
+  const q = filterQuery.value.trim().toLowerCase()
+  if (!q) return props.reports
+  return props.reports.filter((r) => {
+    const typeLabel = meta(r.batch_type).label.toLowerCase()
+    return r.batch_id.toLowerCase().includes(q) || typeLabel.includes(q)
+  })
+})
 
 function toggle(id: number) {
   if (expanded.value.has(id)) expanded.value.delete(id)
@@ -38,6 +53,28 @@ async function copyFailedPaths(paths: string[]) {
     push(t('cards.copied'), 'success')
   } catch {
     push(t('cards.copyFailed'), 'error')
+  }
+}
+
+// M2''''：逐文件重试——失败文件可一键重新索引，不必再手动复制路径到 Index Files。
+const { enableOcr, ocrLanguages } = usePreferences()
+const retrying = ref(false)
+async function retryFailed(paths: string[]) {
+  if (retrying.value || paths.length === 0) return
+  retrying.value = true
+  try {
+    const count = await invoke<number>('index_files', {
+      filePaths: paths,
+      enableOcr: enableOcr.value,
+      ocrLanguages: ocrLanguages.value
+    })
+    push(t('report.retried', { count }), 'success')
+    // 第八轮：重试之后刷新报告列表，否则旧的失败项仍显示，用户以为「重试没用」。
+    emit('refresh')
+  } catch (err) {
+    push(t('report.retryFailed', { err }), 'error')
+  } finally {
+    retrying.value = false
   }
 }
 
@@ -122,14 +159,20 @@ function statusLabel(r: BatchReport): string {
         <p class="report-hint">
           {{ $t('report.hint') }}
         </p>
+        <input
+          v-model="filterQuery"
+          type="text"
+          class="report-search-input"
+          :placeholder="$t('report.searchPlaceholder')"
+        />
       </header>
 
       <div v-if="props.reports.length === 0" class="report-empty">
         {{ $t('report.empty') }}
       </div>
 
-      <ul class="report-list">
-        <li v-for="r in props.reports" :key="r.id" class="report-row">
+      <ul v-else class="report-list">
+        <li v-for="r in filteredReports" :key="r.id" class="report-row">
           <button class="row-head" @click="toggle(r.id)">
             <span class="row-icon">{{ meta(r.batch_type).icon }}</span>
             <span class="row-title">
@@ -167,10 +210,17 @@ function statusLabel(r: BatchReport): string {
               <div v-if="parseSummary(r.summary_json)!.failedPaths.length" class="sub-block">
                 <div class="sub-title-row">
                   <div class="sub-title">{{ $t('report.failedFiles', { count: parseSummary(r.summary_json)!.failedPaths.length }) }}</div>
-                  <button
-                    class="btn-text"
-                    @click="copyFailedPaths(parseSummary(r.summary_json)!.failedPaths)"
-                  >{{ $t('cards.copy') }}</button>
+                  <div class="sub-title-actions">
+                    <button
+                      class="btn-text"
+                      @click="copyFailedPaths(parseSummary(r.summary_json)!.failedPaths)"
+                    >{{ $t('cards.copy') }}</button>
+                    <button
+                      class="btn-text btn-text-primary"
+                      :disabled="retrying"
+                      @click="retryFailed(parseSummary(r.summary_json)!.failedPaths)"
+                    >{{ retrying ? $t('report.retrying') : $t('report.retry') }}</button>
+                  </div>
                 </div>
                 <div
                   v-for="p in parseSummary(r.summary_json)!.failedPaths"
@@ -228,6 +278,22 @@ function statusLabel(r: BatchReport): string {
   margin: 0;
   font-size: 13px;
   color: #9a9aae;
+}
+
+.report-search-input {
+  margin-top: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  background: #0c0c12;
+  border: 1px solid #2a2a3a;
+  border-radius: 6px;
+  color: #f0f0f5;
+  font-size: 12px;
+  outline: none;
+}
+.report-search-input:focus {
+  border-color: #6c8ee3;
 }
 
 .report-empty {
@@ -345,6 +411,14 @@ function statusLabel(r: BatchReport): string {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.sub-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-text-primary {
+  color: #93c5fd;
 }
 .dir-row {
   display: flex;

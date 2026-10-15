@@ -24,8 +24,8 @@ import { t } from '@/i18n'
 // ---------- 模块级共享状态 ----------
 // P1-5 / 债单 A7：folderPath / scanMode / ocrLanguages 改从 usePreferences 取，
 // 复用其 watch 持久化（localStorage），重开 App 自动回填，不再每次重新粘贴路径。
-const { folderPath, scanMode, ocrLanguages } = usePreferences()
-const enableOcr = ref(false)
+// M0'''：enableOcr 也纳入 usePreferences（此前每次重启静默回到 false）。
+const { folderPath, scanMode, ocrLanguages, enableOcr } = usePreferences()
 
 const isScanning = ref(false)
 const scanMsg = ref('')
@@ -34,13 +34,18 @@ const currentFile = ref('')
 const scanProgress = ref<ScanProgress>({ current: 0, total: 0 })
 /** P1-9：扫描开始时间戳，用于计算 ETA */
 const scanStartTime = ref(0)
-/** P1-9：已用时间（秒） */
+/** M1''''：暂停补偿——暂停期间不计入已用时间，避免恢复后 ETA 突然跳大。 */
+let pausedAt = 0
+let accumulatedPauseMs = 0
+/** P1-9：已用时间（秒）；暂停期间冻结计时。 */
 const scanElapsed = computed(() => {
   if (!isScanning.value || scanStartTime.value === 0) return 0
-  return Math.floor((Date.now() - scanStartTime.value) / 1000)
+  const now = isPaused.value && pausedAt > 0 ? pausedAt : Date.now()
+  return Math.floor((now - scanStartTime.value - accumulatedPauseMs) / 1000)
 })
-/** P1-9：预计剩余时间（秒），按当前速度估算 */
+/** P1-9：预计剩余时间（秒），按当前速度估算；暂停时不再重估（保持上次值）。 */
 const scanEta = computed(() => {
+  if (isPaused.value) return scanEtaSnapshot.value
   const p = scanProgress.value
   if (p.total <= 0 || p.current <= 0) return 0
   const elapsed = scanElapsed.value
@@ -49,6 +54,10 @@ const scanEta = computed(() => {
   if (speed <= 0) return 0
   return Math.ceil((p.total - p.current) / speed)
 })
+/** 暂停瞬间的 ETA 快照（暂停期间冻结显示） */
+const scanEtaSnapshot = ref(0)
+/** M2'''：扫描是否处于暂停态（后端 pause_scan / resume_scan 控制扫描循环原地等待） */
+const isPaused = ref(false)
 
 const incomingFiles = ref<SearchResult[]>([])
 const showIncomingBanner = ref(false)
@@ -107,6 +116,12 @@ export function useScanner() {
 
     isScanning.value = true
     scanStartTime.value = Date.now() // P1-9：记录开始时间用于 ETA
+    // 第八轮修复：原先只在 startScan 重置 scanStartTime，暂停补偿量会**跨扫描残留** ——
+    // 暂停过一次之后再开一轮，elapsed 会被上一次的暂停时长减掉（可能算出 0 / 负数）。
+    pausedAt = 0
+    accumulatedPauseMs = 0
+    isPaused.value = false
+    scanEtaSnapshot.value = 0
     scanMsg.value = t('scanner.extracting')
     try {
       const count: number = await invoke('scan_folder', {
@@ -134,12 +149,46 @@ export function useScanner() {
   /** P1-9：停止扫描（调后端 cancel_scan 命令）。 */
   async function stopScan() {
     const { push } = useToast()
+    // 第八轮修复：停止后立刻复位暂停态，否则界面仍显示「已暂停」，
+    // 且下一次扫描会继承这次的 pausedAt / accumulatedPauseMs。
+    isPaused.value = false
+    pausedAt = 0
+    accumulatedPauseMs = 0
     try {
       await invoke('cancel_scan')
       scanMsg.value = t('scanner.scanStopped')
       push(t('scanner.scanStopped'), 'info')
     } catch (err) {
       push(t('scanner.stopFailed', { err }), 'error')
+    }
+  }
+
+  // M2''' 暂停/继续：后端 pause_scan / resume_scan 控制扫描循环原地等待。
+  // M1''''：暂停时冻结 ETA 计时，恢复后把暂停时长从「已用时间」里剔除。
+  async function pauseScan() {
+    const { push } = useToast()
+    try {
+      await invoke('pause_scan')
+      isPaused.value = true
+      pausedAt = Date.now()
+      scanEtaSnapshot.value = scanEta.value
+      push(t('scanner.scanPaused'), 'info')
+    } catch (err) {
+      push(t('scanner.pauseFailed', { err }), 'error')
+    }
+  }
+  async function resumeScan() {
+    const { push } = useToast()
+    try {
+      await invoke('resume_scan')
+      isPaused.value = false
+      if (pausedAt > 0) {
+        accumulatedPauseMs += Date.now() - pausedAt
+        pausedAt = 0
+      }
+      push(t('scanner.scanResumed'), 'info')
+    } catch (err) {
+      push(t('scanner.resumeFailed', { err }), 'error')
     }
   }
 
@@ -175,15 +224,22 @@ export function useScanner() {
     }
   }
 
-  /** 打开扫描报告：读取 batches 表里的骨架与摘要（持久化，重启不丢） */
-  async function openScanReports() {
-    reportMsg.value = ''
+  /** 重新拉取批次列表（不打开对话框）。
+   *  第八轮：重试索引成功后需要刷新报告，否则旧失败项仍挂在界面上，
+   *  用户会以为「重试没用」。 */
+  async function loadScanReports(): Promise<void> {
     try {
       scanReports.value = await invoke<BatchReport[]>('list_scan_reports', { limit: 30 })
-      reportDialogOpen.value = true
     } catch (err) {
       reportMsg.value = t('scanner.loadReportsFailed', { err })
     }
+  }
+
+  /** 打开扫描报告：读取 batches 表里的骨架与摘要（持久化，重启不丢） */
+  async function openScanReports() {
+    reportMsg.value = ''
+    await loadScanReports()
+    reportDialogOpen.value = true
   }
 
   function closeScanReports() {
@@ -475,7 +531,10 @@ export function useScanner() {
     scanProgress,
     scanElapsed,
     scanEta,
+    isPaused,
     stopScan,
+    pauseScan,
+    resumeScan,
     incomingFiles,
     showIncomingBanner,
     incomingCount,
@@ -493,6 +552,7 @@ export function useScanner() {
     // actions
     selectFolder,
     openScanReports,
+    loadScanReports,
     closeScanReports,
     openDiffReport,
     closeDiffReport,

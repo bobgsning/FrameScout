@@ -10,41 +10,60 @@ use crate::fs_trace;
 use crate::model_code::{AppState, BatchReport};
 
 /// 取最近的批次记录（按 id 倒序，最新的在前）。
+/// `batch_type` 可选过滤（M1'''' P0：来源批次下拉只应列出「扫描」批次——
+/// `clean_ghosts` / `legacy_import` 不写 frame_vectors，选中必然 0 结果）。
+///
+/// ⚠️ 第八轮：默认（None / 空串）返回**全部类型**，因为「扫描报告」对话框要看到
+/// 重索引、幽灵清理等所有批次。两个调用方都必须显式表达意图：
+///  - 搜索栏「来源批次」下拉 → 传 `Some("scan")`；
+///  - 扫描报告对话框 → 传 `None`（要全部）。
+/// 这里刻意不把默认改成 scan：那会让报告对话框悄悄少显示几类批次。
 #[tauri::command]
 pub async fn list_scan_reports(
     state: State<'_, AppState>,
     limit: Option<u32>,
+    batch_type: Option<String>,
 ) -> Result<Vec<BatchReport>, String> {
     let db = state.db_conn.lock().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(30).clamp(1, 200);
 
+    // 先多取一批（批次数量少、不会超过 500），Rust 侧按类型过滤后再截断到 limit，
+    // 避免动态拼 SQL 带来的 borrow 生命周期问题。
+    let fetch_limit: u32 = 500;
     let mut stmt = db
         .prepare(
             "SELECT id, batch_id, batch_type, started_at, finished_at, status, summary_json
-             FROM batches
-             ORDER BY id DESC
-             LIMIT ?1",
+             FROM batches ORDER BY id DESC LIMIT ?1",
         )
         .map_err(|e| format!("Prepare error: {}", e))?;
 
-    let items = stmt
-        .query_map([limit], |row| {
-            Ok(BatchReport {
-                id: row.get(0)?,
-                batch_id: row.get(1)?,
-                batch_type: row.get(2)?,
-                started_at: row.get(3)?,
-                finished_at: row.get(4)?,
-                status: row.get(5)?,
-                summary_json: row.get(6)?,
-            })
-        })
+    let mut items: Vec<BatchReport> = stmt
+        .query_map(rusqlite::params![fetch_limit], map_batch_report)
         .map_err(|e| format!("Query error: {}", e))?
         .flatten()
+        .filter(|b| match batch_type.as_deref() {
+            Some(bt) if !bt.is_empty() => b.batch_type == bt,
+            _ => true,
+        })
         .collect();
+    items.truncate(limit as usize);
+    drop(stmt);
 
-    fs_trace!("list scan reports, limit={}", limit);
+    fs_trace!("list scan reports, limit={}, type={:?}", limit, batch_type);
     Ok(items)
+}
+
+/// 把 `batches` 的一行映射成 `BatchReport`。
+fn map_batch_report(row: &rusqlite::Row) -> rusqlite::Result<BatchReport> {
+    Ok(BatchReport {
+        id: row.get(0)?,
+        batch_id: row.get(1)?,
+        batch_type: row.get(2)?,
+        started_at: row.get(3)?,
+        finished_at: row.get(4)?,
+        status: row.get(5)?,
+        summary_json: row.get(6)?,
+    })
 }
 
 /// P2-4：时间轴数据——按日聚合 file_events 的 first_seen 事件。

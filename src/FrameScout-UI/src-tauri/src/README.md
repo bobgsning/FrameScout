@@ -39,7 +39,7 @@ src-tauri/src/
 └── commands/                 # Tauri 前端调用命令 (按业务拆分)
     ├── mod.rs                # 汇总并对外导出所有 Tauri Commands
     ├── index_cmd.rs          # scan_folder, index_files, cancel_scan
-    ├── search_cmd.rs         # search_images, search_by_image, search_text, ping_engine
+    ├── search_cmd.rs         # search_by_image, search_text, ping_engine
     ├── search_unified_cmd.rs # search_unified (统一跨通道融合，已接入前端)
     ├── ocr_cmd.rs            # run_ocr_for_selected_files
     ├── smart_folder_cmd.rs   # 智能文件夹增删改查、重命名、计数刷新与动态执行

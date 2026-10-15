@@ -17,3 +17,4 @@ pub mod ffmpeg_cmd;
 pub mod license_cmd;
 pub mod export_cmd;
 pub mod model_cmd;
+pub mod settings_cmd;

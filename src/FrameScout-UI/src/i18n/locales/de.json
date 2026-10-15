@@ -106,7 +106,47 @@
     "deleteBackupMessage": "Backup „{name}“ löschen?",
     "integrityOk": "✅ Datenbank-Integritätsprüfung bestanden",
     "integrityResult": "⚠️ Ergebnis der Integritätsprüfung: {result}",
-    "verifyFailed": "Prüfung fehlgeschlagen: {err}"
+    "verifyFailed": "Prüfung fehlgeschlagen: {err}",
+    "historyLimit": "🕘 Suchverlauf-Limit",
+    "historyLimitHint": "Wie viele letzte Suchen behalten werden. „Unbegrenzt“ stoppt das stille Kürzen.",
+    "historyEntries": "{n} Einträge behalten",
+    "unlimited": "Unbegrenzt",
+    "never": "Nie",
+    "days": "{n} Tage",
+    "cleanupTitle": "🧹 Automatische Bereinigung",
+    "cleanupHint": "Diese Regeln laufen beim Start. „Nie / Unbegrenzt“ bedeutet: Die App löscht nichts von selbst.",
+    "eventRetention": "Aufbewahrung der Ereignishistorie",
+    "backupKeepCount": "Anzahl zu behaltender Backups",
+    "backupMaxAge": "Backup-Aufbewahrungsdauer",
+    "backupCopies": "{n} Kopien",
+    "cleanupSummary": "🧹 Automatische Bereinigung beim Start:",
+    "cleanupEvents": "{n} alte Ereignisdatensätze entfernt",
+    "cleanupBatches": "{n} alte Batch-Datensätze entfernt",
+    "cleanupBackups": "{n} alte Kalt-Backup-Zeilen entfernt",
+    "cleanupRows": "{n} veraltete Datensätze entfernt",
+    "cleanupLoadFailed": "⚠️ Bereinigungseinstellungen konnten nicht geladen werden: {err}",
+    "cleanupSaveFailed": "⚠️ Bereinigungseinstellungen konnten nicht gespeichert werden: {err}",
+    "backupCreatedWithRotation": "✅ Backup erstellt: {path}. Für Platz wurden ältere Backups entfernt: {removed}",
+    "restoreBackup": "Backup wiederherstellen",
+    "restoreBackupTitle": "Dieses Backup wiederherstellen?",
+    "restoreBackupMessage": "„{name}“ wiederherstellen? Die aktuelle Datenbank wird ersetzt und beim nächsten Start übernommen.",
+    "restorePending": "♻️ Wiederherstellung vorgemerkt — wird beim nächsten Start wirksam.",
+    "restorePendingDetail": "♻️ Wiederherstellung vorgemerkt (aktuell {current} Frames → Backup {backup} Frames). Aktuelle Datenbank wurde zuvor automatisch gesichert.",
+    "restoreFramesCompare": "Aktuell {current} Frames → Backup {backup} Frames.",
+    "restoreWillLose": "{n} Frames gehen verloren.",
+    "restoreWillGain": "{n} Frames kommen hinzu.",
+    "restoreSameCount": "Gleiche Frame-Anzahl.",
+    "restoreFailed": "⚠️ Wiederherstellung fehlgeschlagen: {err}",
+    "lastCleanup": "Beim letzten Start bereinigt:",
+    "lastCleanupNone": "Beim letzten Start gab es keine Bereinigung.",
+    "relevanceSensitivity": "🎚️ Relevanz-Empfindlichkeit",
+    "relevanceSensitivityHint": "Was als „relevant“ zählt. Locker liefert mehr Ergebnisse, streng nur die ähnlichsten.",
+    "sensitivityLoose": "Locker",
+    "sensitivityStandard": "Standard",
+    "sensitivityStrict": "Streng",
+    "lowScoreFold": "Ergebnisse mit niedriger Punktzahl einklappen",
+    "lowScoreFoldHint": "Ein: Bilder mit geringer Sicherheit werden standardmäßig eingeklappt. Aus: immer vollständig anzeigen.",
+    "cleanupAt": "{at}"
   },
   "scan": {
     "capture": "📥 Erfassen",
@@ -149,7 +189,9 @@
     "stop": "⏹ Stopp",
     "progress": "Analyse-Fortschritt: {current} / {total},",
     "eta": "Vergangen {elapsed} · verbleibend {eta}",
-    "awaiting": "Warte auf Signal..."
+    "awaiting": "Warte auf Signal...",
+    "pause": "⏸ Pause",
+    "resume": "▶ Fortsetzen"
   },
   "incoming": {
     "banner": "📥 {count} neue {count, plural, =1 {Bild wurde} other {Bilder wurden}} indexiert. Zum Anzeigen klicken."
@@ -237,7 +279,12 @@
     "empty": "Noch keine Einträge — führen Sie einen Scan aus, dessen Bericht erscheint dann hier.",
     "dirDistribution": "Verzeichnisverteilung",
     "failedFiles": "Fehlgeschlagene Dateien ({count})",
-    "noSummary": "(Keine Zusammenfassung für diesen Lauf hinterlassen)"
+    "noSummary": "(Keine Zusammenfassung für diesen Lauf hinterlassen)",
+    "searchPlaceholder": "Nach Batch-ID oder Typ filtern…",
+    "retry": "Erneut versuchen",
+    "retrying": "Wiederholung…",
+    "retried": "✅ {count} Dateien neu indiziert",
+    "retryFailed": "⚠️ Wiederholung fehlgeschlagen: {err}"
   },
   "search": {
     "filename": "📁 Dateiname",
@@ -267,7 +314,14 @@
     "history": "Suchverlauf",
     "clearHistory": "Verlauf löschen",
     "removeHistory": "Diesen Eintrag entfernen",
-    "clearQuery": "Eingabe löschen"
+    "clearQuery": "Eingabe löschen",
+    "rewriteHint": "Wörter werden an Leerzeichen getrennt und mit AND gesucht · „-“ schließt ein Wort aus · „|“ bedeutet OR · „wort@score“ setzt einen Mindestwert · Vollbreite wird gefaltet",
+    "sourceFilter": "Quelle",
+    "allSources": "Alle Quellen",
+    "fromDate": "Indiziert ab",
+    "toDate": "Indiziert bis",
+    "visualIgnoresQuery": "Das Suchwort nimmt NICHT an der Bildsuche teil — hier wird nur visuell abgeglichen.",
+    "allTargetsOffHint": "Alle Suchkanäle sind deaktiviert — standardmäßig wird nach Dateiname + Notiz + Texterkennung gesucht."
   },
   "pagination": {
     "showingAll": "📂 Alle {total} Dateien anzeigen (keine Paginierung)",
@@ -305,7 +359,11 @@
     "clickToExpand": "Zum Auf-/Zuklappen klicken",
     "deleteConfirmTitle": "Texteinträge endgültig löschen?",
     "deleteConfirmMessage": "{count} ausgewählte Einträge endgültig löschen?",
-    "deleteConfirmDetail": "Das Löschen ist endgültig und nicht rückgängig machbar."
+    "deleteConfirmDetail": "Das Löschen ist endgültig und nicht rückgängig machbar.",
+    "ingestConfirmTitle": "Vorhandene Einträge ersetzen?",
+    "ingestConfirmMessage": "Beim Import werden {count} vorhandene(r) Block/Blöcke aus {files} Datei(en) mit derselben Quelle ersetzt.",
+    "ingestConfirmDetail": "Ersetzte alte Blöcke werden sofort gelöscht und können nicht wiederhergestellt werden.",
+    "ingestConfirmGo": "Ersetzen und importieren"
   },
   "cards": {
     "lowConfidence": "Niedriges Vertrauen ({score})",
@@ -343,7 +401,9 @@
     "copy": "Kopieren",
     "copied": "✅ Kopiert",
     "copyFailed": "⚠️ Kopieren fehlgeschlagen",
-    "remainingChars": "+{count} mehr"
+    "remainingChars": "+{count} mehr",
+    "literalHitNote": "Texttreffer (OCR / Notiz / Dateiname) sind binär — „✓“ bedeutet „Keyword gefunden“, kein exakter Relevanzwert.",
+    "literalHitBadge": "✓ Treffer"
   },
   "cluster": {
     "title": "🧩 Visuelle Ähnlichkeitscluster",
@@ -437,7 +497,15 @@
     "confirmDelete": "Smart Folder „{name}“ löschen? Dies ist nicht rückgängig machbar.",
     "deleted": "🗑️ Smart Folder „{name}“ gelöscht",
     "deleteFailed": "⚠️ Löschen fehlgeschlagen: {err}",
-    "execFailed": "⚠️ Ausführung des Smart Folders fehlgeschlagen: {err}"
+    "execFailed": "⚠️ Ausführung des Smart Folders fehlgeschlagen: {err}",
+    "stillRunning": "Läuft noch…",
+    "export": "Smart-Ordner exportieren (JSON)",
+    "import": "Smart-Ordner importieren (JSON)",
+    "importInvalid": "⚠️ Ungültige Datei: keine Smart-Ordner gefunden",
+    "imported": "✅ {count} Smart-Ordner importiert",
+    "importFailed": "⚠️ Import fehlgeschlagen: {err}",
+    "condCountHint": "Verwendet mehrere Bedingungszeilen – die Anzahl wird beim Öffnen berechnet.",
+    "importRenamed": "{count} Ordner wurden wegen doppelter Namen umbenannt"
   },
   "toast": {
     "databaseLocked": "Datenbank ist ausgelastet, bitte später erneut versuchen",
@@ -504,7 +572,11 @@
     "nothingProcessed": "⚠️ Nichts verarbeitet ({count} Elemente wegen Statusabweichung übersprungen)",
     "processed": "✅ {count} Elemente / {frames} Vektorzeilen verarbeitet",
     "skipped": "{count} Elemente wegen Statusabweichung übersprungen",
-    "freshIndex": "✨ Neu indexiert"
+    "freshIndex": "✨ Neu indexiert",
+    "scanPaused": "⏸ Scan pausiert",
+    "pauseFailed": "Pausieren fehlgeschlagen: {err}",
+    "scanResumed": "▶ Scan fortgesetzt",
+    "resumeFailed": "Fortsetzen fehlgeschlagen: {err}"
   },
   "searcher": {
     "loadFilesFailed": "⚠️ Dateien konnten nicht geladen werden: {err}",
@@ -514,7 +586,18 @@
     "visualSeeking": "[Visueller Modus] Suche nach semantischer Resonanz...",
     "loadAllFailed": "⚠️ Alle Dateien konnten nicht geladen werden: {err}",
     "textAdded": "✅ Als Texteintrag hinzugefügt",
-    "insertFailed": "⚠️ Texteintrag konnte nicht eingefügt werden: {err}"
+    "insertFailed": "⚠️ Texteintrag konnte nicht eingefügt werden: {err}",
+    "pureNegative": "⚠️ Diese Abfrage enthält nur Ausschlusswörter (z. B. „-cat“). Fügen Sie mindestens ein Keyword hinzu.",
+    "needPositive": "⚠️ Fügen Sie mindestens eine positive Bedingung hinzu (Keyword, Bild oder Visuell).",
+    "conditionFailed": "⚠️ Einige Bedingungen konnten nicht gesucht werden: {labels}",
+    "estimateResult": "Etwa {n} Treffer",
+    "estimateBge": "Bedingungen für Textsemantik (BGE) sind noch experimentell – starte die Suche, um Ergebnisse zu sehen.",
+    "lastSession": "Zuletzt gesucht: {what}",
+    "restoreSession": "Wiederherstellen",
+    "dismissSession": "Schließen",
+    "restoredImage": "Bildersuche",
+    "restoredQueryAndConds": "„{q}“ + {n} Bedingungen",
+    "restoredConds": "{n} Bedingungen"
   },
   "textEntries": {
     "loadFailed": "⚠️ Laden fehlgeschlagen: {err}",
@@ -523,7 +606,8 @@
     "ingesting": "⏳ Kodierung in die Bibliothek (lange Dokumente werden aufgeteilt)...",
     "failedCount": "{count} fehlgeschlagen",
     "ingested": "✅ {files} Dateien / {chunks} Chunks indexiert{failedNote}",
-    "ingestFailed": "⚠️ Indexierung fehlgeschlagen: {err}"
+    "ingestFailed": "⚠️ Indexierung fehlgeschlagen: {err}",
+    "replacedChunks": "{count} alte Chunks ersetzt"
   },
   "api": {
     "saveNoteFailed": "Notiz konnte nicht gespeichert werden",
@@ -586,5 +670,48 @@
   "score": {
     "perfect": "🔥 100.0%",
     "match": "{icon} {score}% Übereinstimmung"
+  },
+  "cond": {
+    "typeText": "Text",
+    "typeVisual": "Visuell",
+    "typeExclude": "Ausschließen",
+    "typeTime": "Zeit",
+    "typePath": "Ordner",
+    "typeBatch": "Quell-Batch",
+    "typeTextSemantic": "Textsemantik (BGE)",
+    "typeTextEntry": "Texteintrag",
+    "valuePlaceholder": "Wert…",
+    "in": "in",
+    "minScore": "min",
+    "noLimit": "kein Limit",
+    "pathPlaceholder": "D:\\Ordner\\…",
+    "remove": "Diese Bedingung entfernen",
+    "files": "Dateien",
+    "groupLabel": "Diese Bedingungen",
+    "groupAll": "alle erfüllt",
+    "groupAny": "eine erfüllt",
+    "activeCount": "{n} aktive Bedingungen",
+    "empty": "Keine weiteren Bedingungen — oben ein Keyword eingeben oder eine Bedingung hinzufügen.",
+    "addCondition": "Bedingung hinzufügen",
+    "clearAll": "Alle löschen",
+    "sortBy": "Sortieren nach",
+    "sortByMain": "Treffer von {label}",
+    "defaultSort": "erste Bedingung",
+    "typeFileType": "Dateityp",
+    "typeSeed": "Referenzbild",
+    "typeImages": "Bilder",
+    "typeVideos": "Videos",
+    "alsoText": "＋ auch Text in",
+    "pickImage": "Bild wählen",
+    "today": "Heute",
+    "d7": "7 Tage",
+    "d30": "30 Tage",
+    "thisMonth": "Dieser Monat",
+    "thisYear": "Dieses Jahr",
+    "sortByTime": "Neueste zuerst",
+    "sortByName": "Dateiname",
+    "estimate": "Treffer zählen",
+    "estimating": "Wird gezählt…",
+    "estimateHint": "Zählt nur die Trefferzahl, ohne sie anzuzeigen"
   }
 }

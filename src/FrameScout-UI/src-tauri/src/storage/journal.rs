@@ -190,34 +190,44 @@ pub fn snapshot_frames_before_replace(
     .map_err(|e| format!("snapshot frames failed: {}", e))
 }
 
-/// 启动时的备份裁剪：按路径只留最近 `BACKUP_KEEP_PER_PATH` 份，
-/// 并清掉超过 `BACKUP_MAX_AGE_DAYS` 天的。与 `file_events` 的裁剪思路一致——
-/// 冷备份是保险，不是历史档案馆，不能无限膨胀。
-pub fn prune_reindex_backups(conn: &Connection) -> Result<usize, String> {
-    let keep = BACKUP_KEEP_PER_PATH;
-    // 每个路径按 created_at 倒序编号，留下前 keep 份
-    let by_count = conn
-        .execute(
-            "DELETE FROM reindex_backup
-             WHERE id IN (
-                 SELECT id FROM (
-                     SELECT id, ROW_NUMBER() OVER (PARTITION BY path ORDER BY created_at DESC, id DESC) AS rn
-                     FROM reindex_backup
-                 ) WHERE rn > ?1
-             )",
-            params![keep],
-        )
-        .map_err(|e| format!("prune backups by count failed: {}", e))?;
+/// 启动时的备份裁剪：按路径只留最近 `keep` 份，并清掉超过 `max_age_days` 天的。
+/// 与 `file_events` 的裁剪思路一致——冷备份是保险，不是历史档案馆，不能无限膨胀。
+///
+/// M0''' 第 1 项：`keep` / `max_age_days` 由用户设置（`app_settings`）传入，
+/// `-1` 表示「不限 / 永不清理」——此时跳过对应裁剪分支。
+pub fn prune_reindex_backups(conn: &Connection, keep: i64, max_age_days: i64) -> Result<usize, String> {
+    let mut total = 0usize;
 
-    let cutoff = cutoff_iso(BACKUP_MAX_AGE_DAYS);
-    let by_age = conn
-        .execute(
-            "DELETE FROM reindex_backup WHERE created_at < ?1",
-            params![cutoff],
-        )
-        .map_err(|e| format!("prune backups by age failed: {}", e))?;
+    // keep < 0 表示「份数不限」，跳过按份数裁剪
+    if keep >= 0 {
+        let by_count = conn
+            .execute(
+                "DELETE FROM reindex_backup
+                 WHERE id IN (
+                     SELECT id FROM (
+                         SELECT id, ROW_NUMBER() OVER (PARTITION BY path ORDER BY created_at DESC, id DESC) AS rn
+                         FROM reindex_backup
+                     ) WHERE rn > ?1
+                 )",
+                params![keep],
+            )
+            .map_err(|e| format!("prune backups by count failed: {}", e))?;
+        total += by_count;
+    }
 
-    Ok(by_count + by_age)
+    // max_age_days < 0 表示「天数不限」，跳过按年龄裁剪
+    if max_age_days >= 0 {
+        let cutoff = cutoff_iso(max_age_days);
+        let by_age = conn
+            .execute(
+                "DELETE FROM reindex_backup WHERE created_at < ?1",
+                params![cutoff],
+            )
+            .map_err(|e| format!("prune backups by age failed: {}", e))?;
+        total += by_age;
+    }
+
+    Ok(total)
 }
 
 /// N 天前的 ISO 时间戳（字典序可直接与 `created_at` 比较）。

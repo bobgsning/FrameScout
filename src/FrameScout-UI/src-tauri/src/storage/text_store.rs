@@ -254,3 +254,16 @@ pub fn delete_text_entries_by_source(conn: &Connection, source_uri: &str) -> Res
         .map_err(|e| format!("delete text entries by source failed: {}", e))?;
     Ok(removed)
 }
+
+/// 统计某个来源文件在库里的块数（供入库前预演「这次会替换多少旧块」）。
+/// 与 `delete_text_entries_by_source` 同口径：`source_uri` 相同即视为同一来源。
+pub fn count_text_entries_by_source(conn: &Connection, source_uri: &str) -> Result<usize, String> {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM text_entries WHERE source_uri = ?1",
+            params![source_uri],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("count text entries by source failed: {}", e))?;
+    Ok(count as usize)
+}

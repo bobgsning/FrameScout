@@ -17,6 +17,10 @@ const props = defineProps<{
   busy: boolean
   message: string
   selected: string[]
+  /** 第八轮：> 0 = 有待确认的入库（会替换同来源旧块），弹删前预告 */
+  pendingIngestCount?: number
+  /** 第九轮：将替换旧块的来源文件数（与 count 拼成「替换 N 块 / 来自 M 个文件」） */
+  pendingIngestFiles?: number
 }>()
 
 const emit = defineEmits<{
@@ -31,6 +35,9 @@ const emit = defineEmits<{
   (e: 'search'): void
   (e: 'change-page', delta: number): void
   (e: 'jump', page: number): void
+  /** 第八轮：删前预告的确认 / 取消 */
+  (e: 'confirm-ingest'): void
+  (e: 'cancel-ingest'): void
 }>()
 
 // 全选本页判定：用于按钮文案「全选 / 取消全选」
@@ -73,6 +80,10 @@ function onConfirmDelete() {
   confirmOpen.value = false
   emit('delete')
 }
+
+// 第八轮：入库删前预告 —— ingest 会按来源替换旧块，属破坏性操作。
+// 让用户在按下按钮前就知道「会动多少」，并给一次反悔的机会。
+const ingestConfirmOpen = computed(() => (props.pendingIngestCount ?? 0) > 0)
 </script>
 
 <template>
@@ -200,6 +211,17 @@ function onConfirmDelete() {
         danger
         @confirm="onConfirmDelete"
         @cancel="confirmOpen = false"
+      />
+
+      <!-- 第八轮：入库删前预告（同来源旧块会被替换，先说清再动手） -->
+      <ConfirmDialog
+        :visible="ingestConfirmOpen"
+        :title="$t('textManager.ingestConfirmTitle')"
+        :message="$t('textManager.ingestConfirmMessage', { count: props.pendingIngestCount ?? 0, files: props.pendingIngestFiles ?? 0 })"
+        :detail="$t('textManager.ingestConfirmDetail')"
+        :confirm-text="$t('textManager.ingestConfirmGo')"
+        @confirm="emit('confirm-ingest')"
+        @cancel="emit('cancel-ingest')"
       />
     </div>
   </div>

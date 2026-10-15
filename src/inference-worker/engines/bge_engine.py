@@ -22,6 +22,7 @@ BGE-M3 文本向量引擎：dense-only 封装（sparse 暂缓，留给 FTS5 trig
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import numpy as np
 
@@ -40,8 +41,8 @@ class BgeEngine:
     def __init__(self, model_dir: str):
         self.model_dir = model_dir
         self._available = False
-        self._session = None
-        self._tokenizer = None
+        self._session: Any = None
+        self._tokenizer: Any = None
         self._try_load()
 
     # ------------------------------------------------------------------

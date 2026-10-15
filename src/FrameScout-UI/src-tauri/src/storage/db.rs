@@ -7,12 +7,52 @@ use rusqlite::{params, Connection};
 
 use crate::constants::VECTOR_DIM;
 use crate::fs_trace;
+use crate::model_code::StartupCleanupReport;
+use super::app_settings;
 use super::journal;
 use super::migrations;
 use super::vector_blob::decode_f32_le_checked;
 use super::vector_matrix::FlatVectorMatrix;
 
-pub fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
+/// 默认的事件保留天数（与旧行为一致）。`-1` = 永不清理。
+const DEFAULT_EVENT_RETENTION_DAYS: i64 = 90;
+
+/// M2''' 备份 restore：打开数据库前，应用 pending 恢复标记（若存在）。
+///
+/// 恢复的难点在于：持活连接时覆盖 `.db` 会损坏数据库，故采用「pending restore」——
+/// `restore_backup` 命令只写标记文件，真正替换在下次启动、连接建立之前完成。
+fn apply_pending_restore(app_data_dir: &std::path::Path, db_path: &std::path::Path) {
+    let marker = app_data_dir.join("pending_restore.txt");
+    if !marker.exists() {
+        return;
+    }
+    let backup_path = match fs::read_to_string(&marker) {
+        Ok(s) => s.trim().to_string(),
+        Err(_) => {
+            let _ = fs::remove_file(&marker);
+            return;
+        }
+    };
+    let backup = std::path::PathBuf::from(&backup_path);
+    if backup.exists() {
+        // 用备份覆盖主库；同时清掉旧 WAL/SHM，让恢复后的库从干净状态开始。
+        match fs::copy(&backup, db_path) {
+            Ok(_) => {
+                let wal = db_path.with_extension("db-wal");
+                let shm = db_path.with_extension("db-shm");
+                let _ = fs::remove_file(&wal);
+                let _ = fs::remove_file(&shm);
+                println!("♻️ Database restored from backup: {}", backup_path);
+            }
+            Err(e) => println!("⚠️ Failed to restore from backup {}: {}", backup_path, e),
+        }
+    } else {
+        println!("⚠️ Pending restore backup no longer exists: {}", backup_path);
+    }
+    let _ = fs::remove_file(&marker);
+}
+
+pub fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix, StartupCleanupReport) {
     println!("💾 Connecting to local SQLite Hybrid Matrix...");
     let app_data_dir = dirs::data_local_dir().unwrap().join("FrameScout-Offline_AI_Search-Global");
     if let Err(e) = fs::create_dir_all(&app_data_dir) {
@@ -20,6 +60,11 @@ pub fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
     }
 
     let db_path = app_data_dir.join("framescout-offline_ai_search-global.db");
+
+    // M2''' 备份 restore：pending 恢复标记——打开数据库前，若用户标记了「恢复某备份」，
+    // 先用该备份替换主库文件（此时连接尚未建立，.db 未被锁，可安全覆盖）。
+    apply_pending_restore(&app_data_dir, &db_path);
+
     // 声明为 mut：迁移链需要开启事务（&mut self）。
     let mut conn = Connection::open(&db_path).expect("Failed to open database");
 
@@ -45,18 +90,44 @@ pub fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
         Err(e) => println!("⚠️ Failed to mark interrupted batches: {}", e),
     }
 
-    // 重索引冷备份的裁剪（按路径留最近 3 份、清掉 30 天前的）。
-    // 冷备份是保险而非档案馆，不能无限膨胀。
-    match journal::prune_reindex_backups(&conn) {
+    // M0'''：读取用户的自动清理策略（事件保留天数 / 备份份数 / 备份天数）。
+    // 「永不 / 不限」用哨兵 -1 表示。缺失时回退旧行为默认值。
+    let event_retention_days = app_settings::get_i64(
+        &conn,
+        app_settings::KEY_EVENT_RETENTION_DAYS,
+        DEFAULT_EVENT_RETENTION_DAYS,
+    );
+    let backup_keep = app_settings::get_i64(
+        &conn,
+        app_settings::KEY_BACKUP_KEEP_COUNT,
+        journal::BACKUP_KEEP_PER_PATH as i64,
+    );
+    let backup_max_age_days = app_settings::get_i64(
+        &conn,
+        app_settings::KEY_BACKUP_MAX_AGE_DAYS,
+        journal::BACKUP_MAX_AGE_DAYS,
+    );
+
+    let mut cleanup = StartupCleanupReport::default();
+
+    // 重索引冷备份的裁剪（按路径留最近 N 份、清掉 N 天前的）。
+    // 冷备份是保险而非档案馆，不能无限膨胀。份数/天数由用户可设（-1 = 不限）。
+    match journal::prune_reindex_backups(&conn, backup_keep, backup_max_age_days) {
         Ok(0) => {}
-        Ok(n) => fs_trace!("pruned {} stale reindex backup row(s)", n),
+        Ok(n) => {
+            cleanup.pruned_reindex_backups = n;
+            fs_trace!("pruned {} stale reindex backup row(s)", n);
+        }
         Err(e) => println!("⚠️ Failed to prune reindex backups: {}", e),
     }
 
     // P1-15 / D11：file_events / batches 裁剪——旧实现只增不减，全仓无任何裁剪语句。
-    // 保留最近 90 天的事件记录，超出的清理（冷备份式清理，不影响数据主权核心表）。
-    match prune_old_events_and_batches(&conn) {
+    // 保留最近 N 天的事件记录，超出的清理（冷备份式清理，不影响数据主权核心表）。
+    // M0'''：N 由用户设置（-1 = 永不清理）。
+    match prune_old_events_and_batches(&conn, event_retention_days) {
         Ok((events, batches)) => {
+            cleanup.pruned_events = events;
+            cleanup.pruned_batches = batches;
             if events > 0 || batches > 0 {
                 fs_trace!("pruned {} old file_events, {} old batches", events, batches);
             }
@@ -88,12 +159,23 @@ pub fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
 
     // 清理既无有效 BLOB、也无有效 JSON 的残行。
     // 注意：复合主键下"按 path 删除"会删掉该文件的全部帧，符合"整文件维度过期即清理"的语义。
+    // M0'''：清理数量计入 StartupCleanupReport，前端启动后 Toast 告知。
     let stale_count = loaded_rows.stale_paths.len();
     if stale_count > 0 {
         println!("🧹 Cleaning up {} obsolete database records...", stale_count);
         for path in &loaded_rows.stale_paths {
             let _ = conn.execute("DELETE FROM frame_vectors WHERE path = ?1", params![path]);
         }
+        cleanup.cleaned_residual_rows = stale_count;
+    }
+
+    // 第八轮：给这笔清理账盖时间戳。没有它，设置页只能说「清了什么」，
+    // 说不出「什么时候清的」—— 不可逆的删除连时间都查不到，就不是账，是传言。
+    if cleanup.pruned_events + cleanup.pruned_batches + cleanup.pruned_reindex_backups
+        + cleanup.cleaned_residual_rows
+        > 0
+    {
+        cleanup.cleaned_at = Some(crate::time_util::utc_now_iso());
     }
 
     println!(
@@ -111,7 +193,7 @@ pub fn init_db_and_load_memory() -> (Connection, FlatVectorMatrix) {
         migrations::current_schema_version(&conn)
     );
 
-    (conn, memory_matrix)
+    (conn, memory_matrix, cleanup)
 }
 
 // =========================================================================
@@ -240,15 +322,23 @@ pub fn load_frame_rows(conn: &Connection, only_paths: Option<&[String]>) -> Load
 /// 旧实现：`file_events` / `batches` 只增不减，全仓 grep 无任何 DELETE 语句，
 /// 只有 `journal.rs` 裁了 `reindex_backup`。长期使用后这两张表会无限膨胀。
 ///
-/// 策略：保留最近 90 天的事件记录。purged/dead 等终态事件超过 90 天即清理，
-/// running/interrupted 批次超过 90 天也清理。
-fn prune_old_events_and_batches(conn: &Connection) -> Result<(usize, usize), rusqlite::Error> {
-    // 90 天前的 Unix 时间戳（秒）
+/// M0''' 第 1 项：保留天数 `retention_days` 由用户设置（`app_settings`）传入，
+/// `-1` 表示「永不清理」——此时跳过裁剪，直接返回 (0, 0)。
+fn prune_old_events_and_batches(
+    conn: &Connection,
+    retention_days: i64,
+) -> Result<(usize, usize), rusqlite::Error> {
+    // 永不清理：不做任何裁剪。
+    if retention_days < 0 {
+        return Ok((0, 0));
+    }
+
+    // retention_days 天前的 Unix 时间戳（秒）
     let cutoff = (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64)
-        - 90 * 24 * 3600;
+        - retention_days * 24 * 3600;
 
     let events = conn.execute(
         "DELETE FROM file_events WHERE occurred_at < ?1 AND event_type IN ('purged', 'reindex_failed', 'content_modified')",

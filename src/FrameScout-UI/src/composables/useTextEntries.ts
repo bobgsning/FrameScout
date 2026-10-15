@@ -11,7 +11,7 @@
 import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { TextEntryItem, TextEntryListResponse, TextIngestResult } from '@/types/search'
+import type { TextEntryItem, TextEntryListResponse, TextIngestPreview, TextIngestResult } from '@/types/search'
 import { t } from '@/i18n'
 
 // ---------- 模块级共享状态（单例） ----------
@@ -22,6 +22,11 @@ const textEntriesPage = ref(1)
 const textEntriesPageSize = ref(20)
 /** 管理面板的关键词过滤（按条目内容子串匹配，便于定位到想删的那几条） */
 const textEntriesQuery = ref('')
+/** 第八轮：待确认的入库请求（删前预告用）。非空 = 已停下，等用户点头。 */
+const pendingIngestPaths = ref<string[] | null>(null)
+const pendingIngestCount = ref(0)
+/** 第九轮：将替换旧块的来源文件数（配合 count 拼成「将替换 N 块，来自 M 个文件」）。 */
+const pendingIngestFiles = ref(0)
 const textEntriesTotalPages = computed(() =>
   Math.max(1, Math.ceil(textEntriesTotal.value / textEntriesPageSize.value))
 )
@@ -144,19 +149,61 @@ export function useTextEntries() {
   }
 
   async function ingestPaths(paths: string[]) {
-    textEntriesBusy.value = true
-    textEntriesMsg.value = t('textEntries.ingesting')
-    try {
-      const res: TextIngestResult = await invoke('ingest_text_files', { paths })
-      const failedNote = res.failed.length > 0 ? ' · ' + t('textEntries.failedCount', { count: res.failed.length }) : ''
-      textEntriesMsg.value = t('textEntries.ingested', { files: res.ingested_files.length, chunks: res.chunks, failedNote })
-      await loadTextEntries(1)
-    } catch (err) {
-      textEntriesMsg.value = t('textEntries.ingestFailed', { err })
-    } finally {
-      textEntriesBusy.value = false
+      // 第八轮：删前预告 + 可取消。第九轮改为「真预演」：
+      // 后端 preview_text_ingest 按「同来源」精确算「会替换多少旧块、动到几个文件」，
+      // 而非拿全库条目总数冒充（那样会把全新文件也拦下、且报错数字）。
+      try {
+        const preview = await invoke<TextIngestPreview>('preview_text_ingest', { paths })
+        if (preview.will_replace_chunks > 0) {
+          pendingIngestPaths.value = paths
+          pendingIngestCount.value = preview.will_replace_chunks
+          pendingIngestFiles.value = preview.affected_files
+          return
+        }
+      } catch {
+        // 预演失败就按旧行为直接入库（不让一次探测失败卡住主流程）
+      }
+      await doIngest(paths)
     }
-  }
+
+    /** 用户确认后继续入库。 */
+    async function confirmIngest() {
+      const paths = pendingIngestPaths.value
+      pendingIngestPaths.value = null
+      pendingIngestCount.value = 0
+      pendingIngestFiles.value = 0
+      if (paths && paths.length) await doIngest(paths)
+    }
+
+    function cancelIngest() {
+      pendingIngestPaths.value = null
+      pendingIngestCount.value = 0
+      pendingIngestFiles.value = 0
+    }
+
+    async function doIngest(paths: string[]) {
+      textEntriesBusy.value = true
+      textEntriesMsg.value = t('textEntries.ingesting')
+      try {
+        const res: TextIngestResult = await invoke('ingest_text_files', { paths })
+        const failedNote = res.failed.length > 0 ? ' · ' + t('textEntries.failedCount', { count: res.failed.length }) : ''
+        // M1'''' P0-6：`deleted_old_chunks` 落地——告知「重新导入替换了多少旧块」。
+        const replacedNote =
+          res.deleted_old_chunks > 0
+            ? ' · ' + t('textEntries.replacedChunks', { count: res.deleted_old_chunks })
+            : ''
+        textEntriesMsg.value = t('textEntries.ingested', {
+          files: res.ingested_files.length,
+          chunks: res.chunks,
+          failedNote: failedNote + replacedNote
+        })
+        await loadTextEntries(1)
+      } catch (err) {
+        textEntriesMsg.value = t('textEntries.ingestFailed', { err })
+      } finally {
+        textEntriesBusy.value = false
+      }
+    }
 
   return {
     // state
@@ -170,6 +217,9 @@ export function useTextEntries() {
     selectedEntryIds,
     textEntriesBusy,
     textEntriesMsg,
+    pendingIngestPaths,
+    pendingIngestCount,
+    pendingIngestFiles,
     // actions
     loadTextEntries,
     searchTextEntries,
@@ -182,6 +232,8 @@ export function useTextEntries() {
     changeTextEntriesPageSize,
     deleteSelected,
     pickTextFiles,
-    pickTextFolder
+    pickTextFolder,
+    confirmIngest,
+    cancelIngest
   }
 }

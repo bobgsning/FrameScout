@@ -106,7 +106,47 @@
     "deleteBackupMessage": "Supprimer la sauvegarde « {name} » ?",
     "integrityOk": "✅ Vérification d'intégrité de la base réussie",
     "integrityResult": "⚠️ Résultat de la vérification : {result}",
-    "verifyFailed": "Échec de la vérification : {err}"
+    "verifyFailed": "Échec de la vérification : {err}",
+    "historyLimit": "🕘 Limite de l’historique",
+    "historyLimitHint": "Combien de recherches récentes conserver. « Illimité » arrête la troncature silencieuse.",
+    "historyEntries": "Conserver {n} entrées",
+    "unlimited": "Illimité",
+    "never": "Jamais",
+    "days": "{n} jours",
+    "cleanupTitle": "🧹 Nettoyage automatique",
+    "cleanupHint": "Ces règles s’exécutent au démarrage. « Jamais / Illimité » signifie que l’appli ne supprime rien d’elle-même.",
+    "eventRetention": "Conservation de l’historique des événements",
+    "backupKeepCount": "Nombre de sauvegardes à conserver",
+    "backupMaxAge": "Durée de conservation des sauvegardes",
+    "backupCopies": "{n} copies",
+    "cleanupSummary": "🧹 Nettoyage automatique au démarrage :",
+    "cleanupEvents": "{n} anciens événements supprimés",
+    "cleanupBatches": "{n} anciens lots supprimés",
+    "cleanupBackups": "{n} anciennes lignes de sauvegarde à froid supprimées",
+    "cleanupRows": "{n} enregistrements obsolètes supprimés",
+    "cleanupLoadFailed": "⚠️ Impossible de charger les réglages de nettoyage : {err}",
+    "cleanupSaveFailed": "⚠️ Impossible d’enregistrer les réglages de nettoyage : {err}",
+    "backupCreatedWithRotation": "✅ Sauvegarde créée : {path}. Pour faire de la place, anciennes sauvegardes supprimées : {removed}",
+    "restoreBackup": "Restaurer la sauvegarde",
+    "restoreBackupTitle": "Restaurer cette sauvegarde ?",
+    "restoreBackupMessage": "Restaurer « {name} » ? La base actuelle sera remplacée et appliquée au prochain démarrage.",
+    "restorePending": "♻️ Restauration programmée — effective au prochain démarrage.",
+    "restorePendingDetail": "♻️ Restauration programmée (actuellement {current} trames → sauvegarde {backup}). La base actuelle a d’abord été sauvegardée.",
+    "restoreFramesCompare": "Actuellement {current} trames → sauvegarde {backup} trames.",
+    "restoreWillLose": "{n} trames seront perdues.",
+    "restoreWillGain": "{n} trames seront ajoutées.",
+    "restoreSameCount": "Même nombre de trames.",
+    "restoreFailed": "⚠️ Échec de la restauration : {err}",
+    "lastCleanup": "Nettoyé au dernier démarrage :",
+    "lastCleanupNone": "Aucun nettoyage au dernier démarrage.",
+    "relevanceSensitivity": "🎚️ Sensibilité de pertinence",
+    "relevanceSensitivityHint": "Ce qui compte comme « pertinent ». Large donne plus de résultats, strict seulement les plus proches.",
+    "sensitivityLoose": "Large",
+    "sensitivityStandard": "Standard",
+    "sensitivityStrict": "Strict",
+    "lowScoreFold": "Replier les résultats à faible score",
+    "lowScoreFoldHint": "Activé : les images peu sûres sont repliées par défaut. Désactivé : toujours tout afficher.",
+    "cleanupAt": "{at}"
   },
   "scan": {
     "capture": "📥 Capturer",
@@ -149,7 +189,9 @@
     "stop": "⏹ Arrêter",
     "progress": "Progression de l'analyse : {current} / {total},",
     "eta": "Écoulé {elapsed} · restant {eta}",
-    "awaiting": "En attente du signal..."
+    "awaiting": "En attente du signal...",
+    "pause": "⏸ Pause",
+    "resume": "▶ Reprendre"
   },
   "incoming": {
     "banner": "📥 {count} nouvelles {count, plural, =1 {image a été} other {images ont été}} indexées. Cliquez pour afficher."
@@ -237,7 +279,12 @@
     "empty": "Aucun enregistrement pour l'instant — lancez une analyse et son rapport apparaîtra ici.",
     "dirDistribution": "Répartition des dossiers",
     "failedFiles": "Fichiers en échec ({count})",
-    "noSummary": "(Aucun résumé laissé pour cette exécution)"
+    "noSummary": "(Aucun résumé laissé pour cette exécution)",
+    "searchPlaceholder": "Filtrer par id de lot ou type…",
+    "retry": "Réessayer",
+    "retrying": "Nouvel essai…",
+    "retried": "✅ {count} fichiers réindexés",
+    "retryFailed": "⚠️ Nouvel essai échoué : {err}"
   },
   "search": {
     "filename": "📁 Nom de fichier",
@@ -267,7 +314,14 @@
     "history": "Historique de recherche",
     "clearHistory": "Effacer l'historique",
     "removeHistory": "Supprimer cette entrée",
-    "clearQuery": "Effacer la saisie"
+    "clearQuery": "Effacer la saisie",
+    "rewriteHint": "Les mots sont séparés par des espaces et cherchés en ET · « - » exclut un mot · « | » signifie OU · « mot@score » fixe un minimum · pleine chasse repliée",
+    "sourceFilter": "Source",
+    "allSources": "Toutes les sources",
+    "fromDate": "Indexé depuis",
+    "toDate": "Indexé jusqu’à",
+    "visualIgnoresQuery": "Le mot-clé ne participe PAS à la recherche par image — ici, correspondance visuelle uniquement.",
+    "allTargetsOffHint": "Tous les canaux de recherche sont désactivés — recherche par nom de fichier + note + reconnaissance de texte par défaut."
   },
   "pagination": {
     "showingAll": "📂 Affichage des {total} fichiers (sans pagination)",
@@ -305,7 +359,11 @@
     "clickToExpand": "Cliquez pour déplier / replier",
     "deleteConfirmTitle": "Supprimer définitivement les entrées de texte ?",
     "deleteConfirmMessage": "Supprimer définitivement {count} entrées sélectionnées ?",
-    "deleteConfirmDetail": "La suppression est définitive et irréversible."
+    "deleteConfirmDetail": "La suppression est définitive et irréversible.",
+    "ingestConfirmTitle": "Remplacer les entrées existantes ?",
+    "ingestConfirmMessage": "L’import remplacera {count} bloc(s) existant(s) de {files} fichier(s) de même source.",
+    "ingestConfirmDetail": "Les anciens blocs remplacés sont supprimés immédiatement et ne sont pas récupérables.",
+    "ingestConfirmGo": "Remplacer et importer"
   },
   "cards": {
     "lowConfidence": "Faible confiance ({score})",
@@ -343,7 +401,9 @@
     "copy": "Copier",
     "copied": "✅ Copié",
     "copyFailed": "⚠️ Échec de la copie",
-    "remainingChars": "+{count} de plus"
+    "remainingChars": "+{count} de plus",
+    "literalHitNote": "Les correspondances texte (OCR / note / nom de fichier) sont binaires — « ✓ » signifie « mot trouvé », pas un score précis.",
+    "literalHitBadge": "✓ Correspond"
   },
   "cluster": {
     "title": "🧩 Clusters de similarité visuelle",
@@ -437,7 +497,15 @@
     "confirmDelete": "Supprimer le dossier intelligent « {name} » ? Cette action est irréversible.",
     "deleted": "🗑️ Dossier intelligent « {name} » supprimé",
     "deleteFailed": "⚠️ Échec de la suppression : {err}",
-    "execFailed": "⚠️ Échec de l'exécution du dossier intelligent : {err}"
+    "execFailed": "⚠️ Échec de l'exécution du dossier intelligent : {err}",
+    "stillRunning": "En cours…",
+    "export": "Exporter les dossiers intelligents (JSON)",
+    "import": "Importer les dossiers intelligents (JSON)",
+    "importInvalid": "⚠️ Fichier invalide : aucun dossier intelligent trouvé",
+    "imported": "✅ {count} dossiers intelligents importés",
+    "importFailed": "⚠️ Import échoué : {err}",
+    "condCountHint": "Utilise plusieurs lignes de conditions — le total est calculé à l’ouverture.",
+    "importRenamed": "{count} dossier(s) renommés car le nom existait déjà"
   },
   "toast": {
     "databaseLocked": "La base de données est occupée, veuillez réessayer plus tard",
@@ -504,7 +572,11 @@
     "nothingProcessed": "⚠️ Rien n'a été traité ({count} éléments ignorés en raison d'une incohérence d'état)",
     "processed": "✅ {count} éléments / {frames} lignes de vecteurs traités",
     "skipped": "{count} éléments ignorés en raison d'une incohérence d'état",
-    "freshIndex": "✨ Nouvellement indexé"
+    "freshIndex": "✨ Nouvellement indexé",
+    "scanPaused": "⏸ Analyse en pause",
+    "pauseFailed": "Échec de la pause : {err}",
+    "scanResumed": "▶ Analyse reprise",
+    "resumeFailed": "Échec de la reprise : {err}"
   },
   "searcher": {
     "loadFilesFailed": "⚠️ Impossible de charger les fichiers : {err}",
@@ -514,7 +586,18 @@
     "visualSeeking": "[Mode visuel] Recherche de résonance sémantique...",
     "loadAllFailed": "⚠️ Impossible de charger tous les fichiers : {err}",
     "textAdded": "✅ Ajouté comme entrée de texte",
-    "insertFailed": "⚠️ Impossible d'insérer l'entrée de texte : {err}"
+    "insertFailed": "⚠️ Impossible d'insérer l'entrée de texte : {err}",
+    "pureNegative": "⚠️ Cette requête ne contient que des exclusions (ex. « -cat »). Ajoutez au moins un mot-clé.",
+    "needPositive": "⚠️ Ajoutez au moins une condition positive (mot-clé, image ou visuel).",
+    "conditionFailed": "⚠️ Recherche échouée pour certaines conditions : {labels}",
+    "estimateResult": "Environ {n} résultats",
+    "estimateBge": "Les conditions de sémantique textuelle (BGE) sont encore expérimentales — lancez la recherche pour voir les résultats.",
+    "lastSession": "Dernière recherche : {what}",
+    "restoreSession": "Restaurer",
+    "dismissSession": "Fermer",
+    "restoredImage": "recherche par image",
+    "restoredQueryAndConds": "« {q} » + {n} conditions",
+    "restoredConds": "{n} conditions"
   },
   "textEntries": {
     "loadFailed": "⚠️ Échec du chargement : {err}",
@@ -523,7 +606,8 @@
     "ingesting": "⏳ Encodage dans la bibliothèque (les longs documents sont découpés)...",
     "failedCount": "{count} en échec",
     "ingested": "✅ {files} fichiers / {chunks} segments indexés{failedNote}",
-    "ingestFailed": "⚠️ Échec de l'indexation : {err}"
+    "ingestFailed": "⚠️ Échec de l'indexation : {err}",
+    "replacedChunks": "{count} anciens fragments remplacés"
   },
   "api": {
     "saveNoteFailed": "Impossible d'enregistrer la note",
@@ -586,5 +670,48 @@
   "score": {
     "perfect": "🔥 100.0%",
     "match": "{icon} {score}% de correspondance"
+  },
+  "cond": {
+    "typeText": "Texte",
+    "typeVisual": "Visuel",
+    "typeExclude": "Exclure",
+    "typeTime": "Temps",
+    "typePath": "Dossier",
+    "typeBatch": "Lot source",
+    "typeTextSemantic": "Sémantique texte (BGE)",
+    "typeTextEntry": "Entrée texte",
+    "valuePlaceholder": "valeur…",
+    "in": "dans",
+    "minScore": "min",
+    "noLimit": "sans limite",
+    "pathPlaceholder": "D:\\dossier\\…",
+    "remove": "Supprimer cette condition",
+    "files": "fichiers",
+    "groupLabel": "Ces conditions",
+    "groupAll": "toutes remplies",
+    "groupAny": "une remplie",
+    "activeCount": "{n} conditions actives",
+    "empty": "Aucune condition supplémentaire — tapez un mot-clé ci-dessus ou ajoutez une condition.",
+    "addCondition": "Ajouter une condition",
+    "clearAll": "Tout effacer",
+    "sortBy": "Trier par",
+    "sortByMain": "correspondance de {label}",
+    "defaultSort": "première condition",
+    "typeFileType": "Type de fichier",
+    "typeSeed": "Image de référence",
+    "typeImages": "Images",
+    "typeVideos": "Vidéos",
+    "alsoText": "＋ aussi le texte dans",
+    "pickImage": "Choisir une image",
+    "today": "Aujourd'hui",
+    "d7": "7 jours",
+    "d30": "30 jours",
+    "thisMonth": "Ce mois-ci",
+    "thisYear": "Cette année",
+    "sortByTime": "Plus récents d'abord",
+    "sortByName": "Nom du fichier",
+    "estimate": "Compter",
+    "estimating": "Comptage…",
+    "estimateHint": "Compte le nombre de résultats sans les afficher"
   }
 }

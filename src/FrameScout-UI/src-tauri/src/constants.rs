@@ -86,3 +86,13 @@ pub const RPC_TIMEOUT_INDEX_BASE_MS: i32 = 60000;
 /// 单帧索引估算耗时（毫秒），用于未来动态计算索引批超时（本轮按批用 BASE_MS 兜底）。
 #[allow(dead_code)]
 pub const RPC_TIMEOUT_INDEX_PER_FRAME_MS: i32 = 250;
+
+// =========================================================================
+//  索引分段重启（DirectML 资源保护）
+// =========================================================================
+//  onnxruntime-directml 在连续大量 OCR 推理后（实测约 530 张崩溃）会抛
+//  `UnicodeDecodeError`，且重启 worker 进程是唯一可靠的恢复手段。
+//  因此在 OCR 索引时，每处理此阈值数量的文件就主动重启一次 worker，
+//  彻底重置 DirectML 后端、释放 GPU 资源（详见 mydocs/benchmarks/README.md）。
+/// OCR 索引时，每处理多少文件重启一次 worker（160 张，远低于实测崩溃点约 530）。
+pub const OCR_RESTART_THRESHOLD: usize = 160;

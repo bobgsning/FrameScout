@@ -55,6 +55,7 @@
       :reports="scanReports"
       :message="reportMsg"
       @close="closeScanReports"
+      @refresh="loadScanReports"
     />
 
     <!-- 差异报告：只感知，行动由用户勾选后触发 -->
@@ -81,10 +82,12 @@
 
     <SmartFolderBar
       :smart-folders="smartFolders"
+      :refreshing="refreshingFolders"
       @apply="applySmartFolder"
       @remove="removeSmartFolder"
       @refresh-count="refreshFolderCount"
       @edit="onEditFolder"
+      @changed="loadSmartFolders"
     />
 
     <ExtractionBus
@@ -95,7 +98,10 @@
       :scan-msg="scanMsg"
       :scan-elapsed="scanElapsed"
       :scan-eta="scanEta"
+      :is-paused="isPaused"
       @stop="stopScan"
+      @pause="pauseScan"
+      @resume="resumeScan"
     />
 
     <IncomingBanner
@@ -116,23 +122,7 @@
     />
 
     <div v-else>
-      <SearchConsole
-        v-model:query="searchQuery"
-        v-model:page-size="pageSize"
-        v-model:s-filename="s_filename"
-        v-model:s-note="s_note"
-        v-model:s-ocr="s_ocr"
-        v-model:s-vector="s_vector"
-        v-model:s-text="s_text"
-        v-model:search-mode="searchMode"
-        :is-image-search="isImageSearch"
-        :search-image-path="searchImagePath"
-        :search-msg="searchMsg"
-        @search="resetAndSearch"
-        @search-by-image="searchByImageAction"
-        @clear-image-search="clearImageSearch"
-        @save-smart-folder="onSaveSmartFolder"
-      />
+      <SearchConsole @save-smart-folder="onSaveSmartFolder" />
 
       <!-- 纯文本命中：独立于媒体结果，展示内容本身（分页与媒体结果分开） -->
       <div v-if="textEntryResults.length > 0" class="results-grid">
@@ -266,6 +256,8 @@
         :busy="textEntriesBusy"
         :message="textEntriesMsg"
         :selected="selectedEntryIds"
+        :pending-ingest-count="pendingIngestCount"
+        :pending-ingest-files="pendingIngestFiles"
         @close="closeManager"
         @toggle="toggleEntry"
         @select-all-page="toggleSelectAllPage"
@@ -277,6 +269,8 @@
         @jump="jumpTextEntriesPage"
         @pick-files="pickTextFiles"
         @pick-folder="pickTextFolder"
+        @confirm-ingest="confirmIngest"
+        @cancel-ingest="cancelIngest"
       />
 
       <PaginationBar
@@ -392,21 +386,22 @@ import SelectionTray from '@/components/SelectionTray.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import TimelineView from '@/components/TimelineView.vue'
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '@/composables/useToast'
 import { useSelection } from '@/composables/useSelection'
 import { useKeyboard, type CloseableDialog } from '@/composables/useKeyboard'
 import { saveNote } from '@/utils/api'
 import { exportCSV, exportMarkdown, exportJSON } from '@/utils/exporters'
-import type { SearchResult, SmartFolder } from '@/types/search'
+import type { SearchResult, SmartFolder, StartupCleanupReport } from '@/types/search'
 
 const { t } = useI18n()
 
 // 调用顺序即生命周期注册顺序：引擎握手 -> 授权 -> 数据 -> 视图状态
 const { engineReady, engineStatus, engineMessage, engineRetry, engineMaxRetries } = useEngineStatus()
 const { licenseStatus, showActivateModal } = useLicense()
-const { smartFolders, saveSmartFolder, removeSmartFolder, applySmartFolder, refreshFolderCount, updateSmartFolder } =
+const { smartFolders, refreshingFolders, loadSmartFolders, saveSmartFolder, removeSmartFolder, applySmartFolder, refreshFolderCount, updateSmartFolder } =
   useSmartFolders()
 
 // 智能文件夹命名对话框（P1-3：取消原生 prompt，改用应用内对话框）
@@ -431,7 +426,10 @@ function onConfirmEditFolderName(name: string) {
     editFolder.value.use_vector,
     editFolder.value.use_ocr,
     editFolder.value.use_note,
-    editFolder.value.use_filename
+    editFolder.value.use_filename,
+    // 第八轮核查修复：重命名时漏传 criteriaJson 会被 useSmartFolders 里的 `?? null` 补成 null，
+    // 后端 UPDATE 直接把 criteria_json 写成 NULL —— 改个名就丢整份条件行。现显式回传原值。
+    editFolder.value.criteria_json ?? null
   )
   editFolder.value = null
 }
@@ -643,6 +641,9 @@ const {
   scanProgress,
   scanElapsed,
   scanEta,
+  isPaused,
+  pauseScan,
+  resumeScan,
   showIncomingBanner,
   incomingCount,
   ghostItems,
@@ -659,6 +660,7 @@ const {
   startScan,
   stopScan,
   openScanReports,
+  loadScanReports,
   closeScanReports,
   selectAndIndexFiles,
   openDiffReport,
@@ -678,12 +680,6 @@ const {
   searchImagePath,
   results,
   isSearching,
-  s_filename,
-  s_note,
-  s_ocr,
-  s_vector,
-  s_text,
-  searchMode,
   textEntryResults,
   textEntryPage,
   textEntryTotal,
@@ -691,19 +687,17 @@ const {
   textEntryDialogOpen,
   textEntryInput,
   textEntrySource,
-  pageSize,
   currentPage,
   totalResults,
   totalPages,
   jumpPage,
   isShowAllMode,
   searchMsg,
-  resetAndSearch,
   performSearch,
   searchByImageAction,
-  clearImageSearch,
   changePage,
   doJump,
+  loadBrowsePage,
   showAllFiles,
   exitShowAllMode,
   insertTextEntry,
@@ -731,7 +725,11 @@ const {
   changeTextEntriesPage,
   jumpTextEntriesPage,
   pickTextFiles,
-  pickTextFolder
+  pickTextFolder,
+  pendingIngestCount,
+  pendingIngestFiles,
+  confirmIngest,
+  cancelIngest
 } = useTextEntries()
 const { isClusteringView, clusterThreshold, clusters, truncatedSingleFrames, toggleClustering, fetchClusters } =
   useClustering()
@@ -763,5 +761,39 @@ useKeyboard(() => dialogStack.value, {
   lightboxNext,
   lightboxPrev,
   isLightboxOpen: () => lightboxVisible.value
+})
+
+// ---- M0''' 告知：启动期自动清理汇总 ----
+// 引擎就绪（主界面渲染、ToastContainer 可见）后再拉一次启动清理报告，
+// 若有清理动作，Toast 告知用户「系统替你清掉了什么」。
+let cleanupReportFetched = false
+watch(engineReady, async (ready) => {
+  if (!ready || cleanupReportFetched) return
+  cleanupReportFetched = true
+  try {
+    const report = await invoke<StartupCleanupReport>('get_startup_cleanup_report')
+    const parts: string[] = []
+    if (report.pruned_events > 0) parts.push(t('settings.cleanupEvents', { n: report.pruned_events }))
+    if (report.pruned_batches > 0) parts.push(t('settings.cleanupBatches', { n: report.pruned_batches }))
+    if (report.pruned_reindex_backups > 0) parts.push(t('settings.cleanupBackups', { n: report.pruned_reindex_backups }))
+    if (report.cleaned_residual_rows > 0) parts.push(t('settings.cleanupRows', { n: report.cleaned_residual_rows }))
+    if (parts.length > 0) {
+      const { push } = useToast()
+      push(`${t('settings.cleanupSummary')} ${parts.join(' · ')}`, 'info', 6000)
+    }
+  } catch {
+    // 拉不到清理报告不影响使用，静默
+  }
+})
+
+// ---- M2''' 首屏自动加载浏览列表 ----
+// 引擎就绪后，若无搜索词 / 以图搜图，自动拉第一页浏览列表，不再「打开是空的」。
+let firstBrowseLoaded = false
+watch(engineReady, async (ready) => {
+  if (!ready || firstBrowseLoaded) return
+  firstBrowseLoaded = true
+  if (!searchQuery.value && !isImageSearch.value) {
+    await loadBrowsePage(currentPage.value)
+  }
 })
 </script>

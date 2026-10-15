@@ -24,4 +24,18 @@ pub struct TextIngestResult {
     pub chunks: usize,
     /// 入库失败的文件（读不了 / 编码失败 / 扩展名不支持），供用户重试
     pub failed: Vec<TextIngestFailure>,
+    /// M0''' 告知：重新导入时被替换掉的旧块数（删旧块前告知用户删了多少）。
+    pub deleted_old_chunks: usize,
+}
+
+/// 入库前预演（删前预告的准确数字，非全库总数）。
+///
+/// 只读、不读文件、不编码、不落库——查「这次导入的目标里，
+/// 有多少来源文件已在库里有旧块、一共多少块会被替换」。
+#[derive(Serialize)]
+pub struct TextIngestPreview {
+    /// 将被替换掉的旧块总数（目标文件里已在库中存在的 source_uri 的块数之和）
+    pub will_replace_chunks: usize,
+    /// 会动到的来源文件数（有多少个目标文件已有同来源旧块）
+    pub affected_files: usize,
 }

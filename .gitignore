@@ -80,3 +80,5 @@ src/inference-worker/license_gen.py
 # ========== Notes ==========
 src/inference-worker/Notes.txt
 mydocs/
+benchmarks/
+benchmarks_1000/

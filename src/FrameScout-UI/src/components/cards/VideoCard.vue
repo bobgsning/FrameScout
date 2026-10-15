@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
 import { getAssetUrl, withFrameAnchor } from '@/utils/media'
-import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore } from '@/utils/score'
+import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore, SEMANTIC_BADGE_THRESHOLD } from '@/utils/score'
 import { highlight } from '@/utils/highlight'
 import OcrPanel from './OcrPanel.vue'
 import NotePanel from './NotePanel.vue'
@@ -24,11 +24,13 @@ const src = computed(() => withFrameAnchor(getAssetUrl(props.item.path), props.i
 // 方案 C：文字搜索走结构化自决映射；以图搜图 / BGE 保持原映射。
 const scoreText = computed(() => {
   if (props.item.scoreKind === 'bge') return formatScore(props.item.score, false, 'bge')
+  if (props.item.scoreKind === 'image') return formatScore(props.item.score, true)
   if (props.isImageSearch) return formatScore(props.item.score, true)
   return formatSearchScore(props.item)
 })
 const numericScore = computed(() => {
   if (props.item.scoreKind === 'bge') return getNumericScore(props.item.score, false, 'bge')
+  if (props.item.scoreKind === 'image') return getNumericScore(props.item.score, true)
   if (props.isImageSearch) return getNumericScore(props.item.score, true)
   return getSearchNumericScore(props.item)
 })
@@ -64,13 +66,13 @@ const visibleTags = computed(() =>
       <span v-for="tag in visibleTags" :key="tag" class="tag-badge">{{ tag }}</span>
       <!-- 语义徽章/低分徽章基于“剔除 Semantic 后的可见标签数”判断（见 ImageCard 同逻辑） -->
       <span
-        v-if="numericScore >= 60.0 && visibleTags.length === 0"
+        v-if="numericScore >= SEMANTIC_BADGE_THRESHOLD && visibleTags.length === 0"
         class="tag-badge semantic-tag"
       >
         {{ $t('cards.semantic') }}
       </span>
       <span
-        v-if="numericScore < 60.0 && visibleTags.length === 0"
+        v-if="numericScore < SEMANTIC_BADGE_THRESHOLD && visibleTags.length === 0"
         class="tag-badge low-tag"
       >
         {{ $t('cards.lowConfidenceBadge') }}

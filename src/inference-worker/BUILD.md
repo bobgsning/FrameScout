@@ -127,6 +127,10 @@ python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connec
 
 # 只编译、不部署到 Tauri bin
 .\build_nuitka.ps1 -SkipDeploy
+
+# Onedir 时不打包 torch 依赖,最小体积与最推荐情况
+# （若要打包 torch，请先安装 torch 并自检通过）
+.\build_nuitka.ps1 -Onedir -NoTorch
 ```
 
 ### 4.1 前置条件

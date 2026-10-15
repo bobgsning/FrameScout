@@ -1,6 +1,10 @@
 # 🔍 FrameScout —— 离线 AI 搜索
 
 <p align="center">
+  <img src="src/FrameScout-UI/app.svg" alt="FrameScout Logo" width="150" />
+</p>
+
+<p align="center">
   <a href="./README.md">English</a> ·
   <a href="./README.zh-CN.md"><strong>中文</strong></a>
 </p>

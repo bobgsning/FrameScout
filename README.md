@@ -1,6 +1,10 @@
 # 🔍 FrameScout — Offline AI Search
 
 <p align="center">
+  <img src="src/FrameScout-UI/app.svg" alt="FrameScout Logo" width="150" />
+</p>
+
+<p align="center">
   <a href="./README.md"><strong>English</strong></a> ·
   <a href="./README.zh-CN.md">中文</a>
 </p>

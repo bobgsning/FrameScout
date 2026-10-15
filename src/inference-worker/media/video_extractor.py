@@ -73,6 +73,8 @@ def extract_video_frames(
     if not cap.isOpened():
         raise ValueError(f"Cannot open video (corrupted or unsupported codec): {video_path}")
 
+    yielded = 0  # 抽到的帧数（try 外定义，供 finally 打印截断日志）
+
     try:
         # 某些容器/编码会读到 fps=0 或 NaN，此时按 25fps 兜底
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -82,7 +84,6 @@ def extract_video_frames(
         sec = 0.0
         base_step = 1.0 / extract_fps          # 兜底采样间隔（默认 1s）
         probe_step = base_step / 4.0           # 场景检测探测间隔（默认 0.25s，4x 密度）
-        yielded = 0
         prev_frame = None  # 上一次实际 yield 出去的帧，用于相邻去重与场景检测
         last_yield_sec = -base_step            # 上次兜底采样的时间戳
 
@@ -145,6 +146,13 @@ def extract_video_frames(
                 break
     finally:
         cap.release()
+        # M2'''' 缓冲（视频抽帧参数可调延期）：达到 max_frames 上限时打印可见日志，
+        # 告知「只索引了前 N 帧」，避免用户误以为整段视频都入库。
+        if yielded >= max_frames:
+            print(
+                f"[video] {os.path.basename(video_path)}: indexed {yielded} frames "
+                f"(hit MAX_FRAMES_PER_VIDEO={max_frames}); later frames were NOT indexed"
+            )
 
 
 def extract_video_frames_list(
