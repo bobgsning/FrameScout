@@ -358,7 +358,7 @@
     "resume": "▶ Reanudar"
   },
   "incoming": {
-    "banner": "📥 {count} nuevas {count, plural, =1 {imagen ha sido} other {imágenes han sido}} indexadas. Haz clic para ver."
+    "banner": "📥 {count} nuevas imágenes han sido indexadas. Haz clic para ver."
   },
   "ghost": {
     "title": "🧹 Limpieza de fantasmas",

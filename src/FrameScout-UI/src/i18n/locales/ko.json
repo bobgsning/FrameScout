@@ -358,7 +358,7 @@
     "resume": "▶ 계속"
   },
   "incoming": {
-    "banner": "📥 새 {count, plural, =1 {이미지가} other {이미지가}} {count}개 색인되었습니다. 클릭하여 확인하세요."
+    "banner": "📥 새 이미지 {count}개 색인되었습니다. 클릭하여 확인하세요."
   },
   "ghost": {
     "title": "🧹 고스트 정리",

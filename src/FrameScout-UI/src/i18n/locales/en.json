@@ -358,7 +358,7 @@
     "awaiting": "Awaiting signal..."
   },
   "incoming": {
-    "banner": "📥 {count} new {count, plural, =1 {image has} other {images have}} been indexed. Click to view."
+    "banner": "📥 {count} new image(s) have been indexed. Click to view."
   },
   "ghost": {
     "title": "🧹 Ghost Cleanup",

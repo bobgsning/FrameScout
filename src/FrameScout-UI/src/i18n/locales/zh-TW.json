@@ -358,7 +358,7 @@
     "awaiting": "等待訊號中..."
   },
   "incoming": {
-    "banner": "📥 {count} 個新{count, plural, =1 {圖片} other {圖片}}已完成索引。點擊檢視。"
+    "banner": "📥 已新入庫 {count} 張圖片，點擊檢視。"
   },
   "ghost": {
     "title": "🧹 幽靈清理",

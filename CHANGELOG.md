@@ -45,6 +45,55 @@ vue-i18n 把消息里的 `@` 当作「链接消息 linked message」的保留字
 - `node scripts/check_i18n_backend.mjs` ✅（9 语 × 147 键无缺失/无重复/占位符一致）。
 - `npm run build` ✅。
 
+### 扫描后「新入库」提示只有简体中文显示、其他语言不显示修复
+
+**现象**：扫描入库后的浮动提示「已新入库 N 张图片，点击查看」只在简体中文下出现，
+其他语言（含繁体）都不显示。
+
+**根因**：`IncomingBanner.vue` 用 `$t('incoming.banner', { count })` 渲染。zh-CN 的
+`incoming.banner` 用简单 `{count}` 插值，能正常编译；但其他 8 个语言（en / fr / es / de /
+ru / ko / ja / zh-TW）用了 `{count, plural, =1 {...} other {...}}` 这种 **ICU 复数语法**，
+vue-i18n v9 **不认** `plural` 选择器，编译时报 `Unterminated closing brace` /
+`Unbalanced closing brace`，生产构建下渲染中断，banner 出不来（与上文 `@` 字面量问题同类）。
+
+**做法**：把 8 个语言的 `incoming.banner` 统一改成简单 `{count}` 插值、去掉 `plural`
+包裹，与 zh-CN 及项目其他文案（`summary` / `noteAtTime` 等）保持一致。逐语言按原意简化，
+如 en → `📥 {count} new image(s) have been indexed. Click to view.`。
+
+**验证**：vue-i18n 实测 9 语 × `{count: 3}` 全部正确插值、无残留 `{` / `plural` ✅；
+`node scripts/check_i18n_backend.mjs` ✅（9 语 × 147 键一致）。
+
+### 时间轴永远显示「0 files indexed / No indexing records」修复
+
+**现象**：打开时间轴（Timeline），无论库里有没有已索引文件，都显示
+`Last 365 days · 0 files indexed · 0 active days` 和
+`No indexing records yet — scan a material library folder first`。
+
+**根因**：`file_events.occurred_at` 列存的是 **ISO-8601 字符串**
+（`utc_now_iso()` 写入，形如 `YYYY-MM-DDTHH:MM:SSZ`），但时间轴相关命令却把它当
+**Unix 秒（整数）** 查询：
+
+- `report_cmd.rs` 的 `list_timeline` / `last_year_today_count` / `list_files_by_day`
+  都用了 `date(occurred_at, 'unixepoch', 'localtime')`——对 ISO 字符串，这个
+  `unixepoch` 修饰符解析出的日期是 `NULL`；
+- `list_timeline` 里 `MIN(occurred_at)` 返回 TEXT，却往 `i64` 字段映射，`row.get`
+  报错后被 `.filter_map(|r| r.ok())` 静默丢弃，最终返回空数组；
+- `list_timeline` 的 `WHERE occurred_at >= ?1` 里 `?1` 也是 Unix 秒，类型不对。
+
+三者叠加，时间轴 / 「去年今天」 / 下钻永远拿不到数据。
+
+**做法**（`report_cmd.rs` 三处 SQL 统一按 ISO 字符串处理）：
+
+1. 日期聚合与比较改用 `date(occurred_at)` 直接取 UTC 日期前缀，替代
+   `date(occurred_at, 'unixepoch', 'localtime')`；
+2. 时间范围用 `date(occurred_at) >= date('now', '-' || ?1 || ' days')` 动态算截止日，
+   不再传 Unix 秒 `cutoff`；
+3. 需要 Unix 秒的 `timestamp` 字段改用 `CAST(strftime('%s', MIN(occurred_at)) AS INTEGER)`
+   显式转换，避免 TEXT→i64 映射报错。
+
+**验证**：`cargo check --features pro` ✅ · `read_lints` 0 告警。
+需在已有 `file_events` 数据的库上打开时间轴端到端复测一次，应能看到按日柱状图与正确总数。
+
 ### Nuitka onedir 模型路径解析回归修复（发布前核查）
 
 **问题**：onedir 打包的 worker 启动即报

@@ -85,28 +85,25 @@ pub async fn list_timeline(
 
     // 默认返回最近 365 天
     let lookback = days.unwrap_or(365);
-    let cutoff = (std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64)
-        - lookback * 24 * 3600;
 
-    // file_events 表的 occurred_at 是 Unix 秒（整数）。
-    // 按 date(occurred_at) 聚合 first_seen 事件
+    // file_events.occurred_at 存的是 ISO-8601 字符串（utc_now_iso()，形如
+    // `YYYY-MM-DDTHH:MM:SSZ`），不是 Unix 秒。直接用 date(occurred_at) 取 UTC
+    // 日期前缀做聚合；只有需要 Unix 秒时才用 strftime('%s', ...) 转换。
     let mut stmt = db
         .prepare(
-            "SELECT date(occurred_at, 'unixepoch', 'localtime') AS day,
+            "SELECT date(occurred_at) AS day,
                     COUNT(*) AS cnt,
-                    MIN(occurred_at) AS first_ts
+                    CAST(strftime('%s', MIN(occurred_at)) AS INTEGER) AS first_ts
              FROM file_events
-             WHERE event_type = 'first_seen' AND occurred_at >= ?1
+             WHERE event_type = 'first_seen'
+               AND date(occurred_at) >= date('now', '-' || ?1 || ' days')
              GROUP BY day
              ORDER BY day DESC",
         )
         .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let items: Vec<TimelineDay> = stmt
-        .query_map([cutoff], |row| {
+        .query_map([lookback], |row| {
             Ok(TimelineDay {
                 date: row.get(0)?,
                 count: row.get(1)?,
@@ -125,12 +122,13 @@ pub async fn list_timeline(
 pub async fn last_year_today_count(state: State<'_, AppState>) -> Result<i64, String> {
     let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
-    // 一年前的今天：减 365 天，取当天的 first_seen 事件数
+    // 一年前的今天：减 365 天，取当天的 first_seen 事件数。
+    // occurred_at 是 ISO 字符串，直接用 date(occurred_at) 取 UTC 日期比较。
     let count: i64 = db
         .query_row(
             "SELECT COUNT(*) FROM file_events
              WHERE event_type = 'first_seen'
-               AND date(occurred_at, 'unixepoch', 'localtime') = date('now', '-365 days', 'localtime')",
+               AND date(occurred_at) = date('now', '-365 days')",
             [],
             |r| r.get(0),
         )
@@ -155,10 +153,10 @@ pub async fn list_files_by_day(
 
     let mut stmt = db
         .prepare(
-            "SELECT path, MIN(occurred_at) AS ts
+            "SELECT path, CAST(strftime('%s', MIN(occurred_at)) AS INTEGER) AS ts
              FROM file_events
              WHERE event_type = 'first_seen'
-               AND date(occurred_at, 'unixepoch', 'localtime') = ?1
+               AND date(occurred_at) = ?1
              GROUP BY path
              ORDER BY ts DESC",
         )

@@ -358,7 +358,7 @@
     "resume": "▶ Fortsetzen"
   },
   "incoming": {
-    "banner": "📥 {count} neue {count, plural, =1 {Bild wurde} other {Bilder wurden}} indexiert. Zum Anzeigen klicken."
+    "banner": "📥 {count} neue Bilder wurden indexiert. Zum Anzeigen klicken."
   },
   "ghost": {
     "title": "🧹 Geisterbereinigung",

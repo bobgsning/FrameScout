@@ -358,7 +358,7 @@
     "resume": "▶ 再開"
   },
   "incoming": {
-    "banner": "📥 新しい{count, plural, =1 {画像} other {画像}}が {count} 件インデックスされました。クリックして表示。"
+    "banner": "📥 新しい画像が {count} 件インデックスされました。クリックして表示。"
   },
   "ghost": {
     "title": "🧹 ゴーストクリーンアップ",
