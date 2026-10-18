@@ -220,7 +220,7 @@
     "activatePro": "FrameScout Pro aktivieren",
     "activateHint": "Geben Sie Ihre E-Mail-Adresse und den nach dem Kauf erhaltenen Lizenzschlüssel ein.",
     "email": "E-Mail-Adresse",
-    "emailPlaceholder": "ihre@email.com",
+    "emailPlaceholder": "ihre{'@'}email.com",
     "licenseKey": "Lizenzschlüssel",
     "licenseKeyPlaceholder": "Base64-Lizenzschlüssel hier einfügen...",
     "activateButton": "Lizenz aktivieren"
@@ -479,7 +479,7 @@
     "clearHistory": "Verlauf löschen",
     "removeHistory": "Diesen Eintrag entfernen",
     "clearQuery": "Eingabe löschen",
-    "rewriteHint": "Wörter werden an Leerzeichen getrennt und mit AND gesucht · „-“ schließt ein Wort aus · „|“ bedeutet OR · „wort@score“ setzt einen Mindestwert · Vollbreite wird gefaltet",
+    "rewriteHint": "Wörter werden an Leerzeichen getrennt und mit AND gesucht · „-“ schließt ein Wort aus · „|“ bedeutet OR · „wort{'@'}score“ setzt einen Mindestwert · Vollbreite wird gefaltet",
     "sourceFilter": "Quelle",
     "allSources": "Alle Quellen",
     "fromDate": "Indiziert ab",
@@ -610,7 +610,7 @@
     "next": "Weiter",
     "close": "Schließen (Esc)",
     "matches": "⌖ {count} Treffer",
-    "atTime": "@{time} s",
+    "atTime": "{time} s",
     "fullscreen": "Vollbild umschalten (F)",
     "hints": "Leertaste=weiter · ←→=zurück/weiter · Esc=schließen · Rad=Zoom · Ziehen=Schwenken · F=Vollbild"
   },

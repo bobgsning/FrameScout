@@ -220,7 +220,7 @@
     "activatePro": "Activate FrameScout Pro",
     "activateHint": "Enter your email and the License Key provided after purchase.",
     "email": "Email Address",
-    "emailPlaceholder": "your@email.com",
+    "emailPlaceholder": "your{'@'}email.com",
     "licenseKey": "License Key",
     "licenseKeyPlaceholder": "Paste your Base64 License Key here...",
     "activateButton": "Activate License"
@@ -479,7 +479,7 @@
     "clearHistory": "Clear history",
     "removeHistory": "Remove this entry",
     "clearQuery": "Clear input",
-    "rewriteHint": "Words are split on spaces and matched with AND · \"-\" excludes a word · \"|\" means OR · \"word@score\" sets a minimum score · full-width characters are folded to half-width",
+    "rewriteHint": "Words are split on spaces and matched with AND · \"-\" excludes a word · \"|\" means OR · \"word{'@'}score\" sets a minimum score · full-width characters are folded to half-width",
     "sourceFilter": "Source",
     "allSources": "All sources",
     "fromDate": "Indexed from",
@@ -653,7 +653,7 @@
     "next": "Next",
     "close": "Close (Esc)",
     "matches": "⌖ {count} matches",
-    "atTime": "@{time}s",
+    "atTime": "{time}s",
     "fullscreen": "Toggle fullscreen (F)",
     "hints": "Space=next · ←→=prev/next · Esc=close · wheel=zoom · drag=pan · F=fullscreen"
   },

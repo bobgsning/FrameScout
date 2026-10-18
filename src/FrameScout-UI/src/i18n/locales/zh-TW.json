@@ -220,7 +220,7 @@
     "activatePro": "啟用 FrameScout 專業版",
     "activateHint": "請輸入您的電子郵件與購買後取得的授權金鑰。",
     "email": "電子郵件地址",
-    "emailPlaceholder": "your@email.com",
+    "emailPlaceholder": "your{'@'}email.com",
     "licenseKey": "授權金鑰",
     "licenseKeyPlaceholder": "在此貼上您的 Base64 授權金鑰...",
     "activateButton": "啟用授權"
@@ -479,7 +479,7 @@
     "clearHistory": "清除紀錄",
     "removeHistory": "移除此條目",
     "clearQuery": "清除輸入",
-    "rewriteHint": "按空白切詞並做 AND 比對 · 「-」表示排除 · 「|」表示或 · 「詞@分數」設最低分 · 全形字元會摺疊為半形",
+    "rewriteHint": "按空白切詞並做 AND 比對 · 「-」表示排除 · 「|」表示或 · 「詞{'@'}分數」設最低分 · 全形字元會摺疊為半形",
     "sourceFilter": "來源",
     "allSources": "全部來源",
     "fromDate": "入庫起始",
@@ -653,7 +653,7 @@
     "next": "下一張",
     "close": "關閉（Esc）",
     "matches": "⌖ {count} 處命中",
-    "atTime": "@{time} 秒",
+    "atTime": "{time} 秒",
     "fullscreen": "切換全螢幕（F）",
     "hints": "Space=下一張 · ←→=上一張/下一張 · Esc=關閉 · 滾輪=縮放 · 拖曳=平移 · F=全螢幕"
   },

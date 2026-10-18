@@ -220,7 +220,7 @@
     "activatePro": "Activer FrameScout Pro",
     "activateHint": "Saisissez votre adresse e-mail et la clé de licence reçue après l'achat.",
     "email": "Adresse e-mail",
-    "emailPlaceholder": "vous@email.com",
+    "emailPlaceholder": "vous{'@'}email.com",
     "licenseKey": "Clé de licence",
     "licenseKeyPlaceholder": "Collez votre clé de licence Base64 ici...",
     "activateButton": "Activer la licence"
@@ -479,7 +479,7 @@
     "clearHistory": "Effacer l'historique",
     "removeHistory": "Supprimer cette entrée",
     "clearQuery": "Effacer la saisie",
-    "rewriteHint": "Les mots sont séparés par des espaces et cherchés en ET · « - » exclut un mot · « | » signifie OU · « mot@score » fixe un minimum · pleine chasse repliée",
+    "rewriteHint": "Les mots sont séparés par des espaces et cherchés en ET · « - » exclut un mot · « | » signifie OU · « mot{'@'}score » fixe un minimum · pleine chasse repliée",
     "sourceFilter": "Source",
     "allSources": "Toutes les sources",
     "fromDate": "Indexé depuis",
@@ -610,7 +610,7 @@
     "next": "Suivant",
     "close": "Fermer (Échap)",
     "matches": "⌖ {count} correspondances",
-    "atTime": "@{time} s",
+    "atTime": "{time} s",
     "fullscreen": "Basculer le plein écran (F)",
     "hints": "Espace=suivant · ←→=préc/suiv · Échap=fermer · molette=zoom · glisser=panoramique · F=plein écran"
   },

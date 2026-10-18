@@ -220,7 +220,7 @@
     "activatePro": "FrameScout Pro 활성화",
     "activateHint": "이메일과 구매 후 받은 라이선스 키를 입력하세요.",
     "email": "이메일 주소",
-    "emailPlaceholder": "your@email.com",
+    "emailPlaceholder": "your{'@'}email.com",
     "licenseKey": "라이선스 키",
     "licenseKeyPlaceholder": "Base64 라이선스 키를 여기에 붙여넣으세요...",
     "activateButton": "라이선스 활성화"
@@ -479,7 +479,7 @@
     "clearHistory": "기록 지우기",
     "removeHistory": "이 항목 제거",
     "clearQuery": "입력 지우기",
-    "rewriteHint": "단어는 공백으로 나뉘어 AND 검색 · 「-」는 제외 · 「|」는 OR · 「단어@점수」는 최소 점수 · 전각 문자는 반각으로 접기",
+    "rewriteHint": "단어는 공백으로 나뉘어 AND 검색 · 「-」는 제외 · 「|」는 OR · 「단어{'@'}점수」는 최소 점수 · 전각 문자는 반각으로 접기",
     "sourceFilter": "출처",
     "allSources": "모든 출처",
     "fromDate": "인덱싱 시작",
@@ -610,7 +610,7 @@
     "next": "다음",
     "close": "닫기(Esc)",
     "matches": "⌖ {count}개 일치",
-    "atTime": "@{time}초",
+    "atTime": "{time}초",
     "fullscreen": "전체 화면 전환(F)",
     "hints": "Space=다음 · ←→=이전/다음 · Esc=닫기 · 휠=확대/축소 · 드래그=이동 · F=전체 화면"
   },

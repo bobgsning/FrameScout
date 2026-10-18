@@ -10,6 +10,41 @@ All notable changes to this project will be documented in this file.
 扫描暂停 / 继续、自动清理策略（给开关并告知）；后端全面改用稳定错误码，文案交予前端 9 语 i18n；
 另以 LGPL 版 FFmpeg 兜底解码 MKV/AVI，并接上视频「切片段」。界面语言自本版起覆盖 9 种。
 
+### 右上角「Trial Mode」点击无反应 / 授权弹窗不出现（build:pro 反馈）
+
+**现象**：`npm run build:pro` 出包后，点右上角授权徽标没反应，激活弹窗不弹出
+（此前能正常弹出）。
+
+**根因**：`build:pro` 只给 **Rust 后端** 加 `--features pro`，前端与 `build`
+同走 `npm run build`、产物一致——故问题不在构建差异，而在 **i18n 文案里的非法 `@`**。
+vue-i18n 把消息里的 `@` 当作「链接消息 linked message」的保留字，遇到裸 `@`
+（如邮箱）会在编译消息时抛 `SyntaxError: Invalid linked format`。9 个语言包里共有
+**27 处非法 `@`**，分三类：
+
+1. **`header.emailPlaceholder`**（如 `your@email.com`）——授权弹窗的邮箱输入框
+   placeholder 正是它，`LicenseModal` 一渲染就抛错，渲染中断，**弹窗自然出不来**
+   （本次反馈的直接原因）。
+2. **`lightbox.atTime`**（如 `@{time}s`）——`@{...}` 不是合法语法（应为 `{time}`
+   命名插值），既抛错又**从不插值**，Lightbox 里 OCR 时间戳一直显示成裸 `@{time}`。
+3. **`search.rewriteHint`**（如 `word@score`）——裸 `@`，同样抛错；当前未被引用，
+   属潜伏雷，一旦接上就会复现同类故障。
+
+**做法**：
+
+1. 字面 `@`（`emailPlaceholder` / `rewriteHint`）统一用 vue-i18n 字面量插值
+   `{'@'}` 转义，如 `your@email.com` → `your{'@'}email.com`。
+2. `atTime` 的 `@{time}` 改为 `{time}` 命名插值。
+3. 一次性脚本批量处理 9 个语言包（en / zh-CN / zh-TW / ja / ru / ko / de / fr / es），
+   并跑 `node scripts/check_i18n_backend.mjs` 确认 9 语 × 147 键一致、无重复键。
+
+**验证**：
+
+- 无头浏览器 + Tauri mock 复现生产包：修复前点击徽标 → 弹窗 `count=0` 且控制台报
+  `Invalid linked format`；修复后点击 → 弹窗出现、邮箱 placeholder 正常显示
+  `your@email.com`、Esc 可关闭、控制台 0 报错。
+- `node scripts/check_i18n_backend.mjs` ✅（9 语 × 147 键无缺失/无重复/占位符一致）。
+- `npm run build` ✅。
+
 ### Nuitka onedir 模型路径解析回归修复（发布前核查）
 
 **问题**：onedir 打包的 worker 启动即报

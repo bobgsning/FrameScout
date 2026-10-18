@@ -235,7 +235,7 @@ $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
 Write-Host ""
-Write-Host "🔨 开始 Nuitka 编译（首次 10~30 分钟属正常，勿中断）..." -ForegroundColor Cyan
+Write-Host "🔨 开始 Nuitka 编译（首次 60~100 分钟属正常，勿中断）..." -ForegroundColor Cyan
 Write-Host "   模式：$(if ($Onedir) { 'standalone (onedir)' } else { 'standalone + onefile' })"
 # 用 venv 内 python -m nuitka 调用，而非 nuitka.cmd：.cmd 包装器会吞掉真实
 # 退出码，导致编译 FATAL 后 $LASTEXITCODE 仍为 0，脚本误判"编译完成"继续走。

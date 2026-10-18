@@ -220,7 +220,7 @@
     "activatePro": "激活 FrameScout 专业版",
     "activateHint": "输入你的邮箱和购买后获得的授权密钥。",
     "email": "邮箱地址",
-    "emailPlaceholder": "your@email.com",
+    "emailPlaceholder": "your{'@'}email.com",
     "licenseKey": "授权密钥",
     "licenseKeyPlaceholder": "在此粘贴你的 Base64 授权密钥…",
     "activateButton": "激活授权"
@@ -479,7 +479,7 @@
     "clearHistory": "清空历史",
     "removeHistory": "删除这条",
     "clearQuery": "清除输入",
-    "rewriteHint": "按空格切词并做 AND 匹配 · 「-」表示排除 · 「|」表示或 · 「词@分数」设最低分 · 全角字符会折叠为半角",
+    "rewriteHint": "按空格切词并做 AND 匹配 · 「-」表示排除 · 「|」表示或 · 「词{'@'}分数」设最低分 · 全角字符会折叠为半角",
     "sourceFilter": "来源",
     "allSources": "全部来源",
     "fromDate": "入库起始",
@@ -653,7 +653,7 @@
     "next": "下一张",
     "close": "关闭 (Esc)",
     "matches": "⌖ {count} 处匹配",
-    "atTime": "@{time}s",
+    "atTime": "{time}s",
     "fullscreen": "切换全屏 (F)",
     "hints": "Space=下一张 · ←→=上一张/下一张 · Esc=关闭 · 滚轮=缩放 · 拖拽=平移 · F=全屏"
   },

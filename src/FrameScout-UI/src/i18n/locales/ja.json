@@ -220,7 +220,7 @@
     "activatePro": "FrameScout Pro を有効化",
     "activateHint": "メールアドレスと、購入後に受け取ったライセンスキーを入力してください。",
     "email": "メールアドレス",
-    "emailPlaceholder": "your@email.com",
+    "emailPlaceholder": "your{'@'}email.com",
     "licenseKey": "ライセンスキー",
     "licenseKeyPlaceholder": "Base64 ライセンスキーをここに貼り付け...",
     "activateButton": "ライセンスを有効化"
@@ -479,7 +479,7 @@
     "clearHistory": "履歴をクリア",
     "removeHistory": "この項目を削除",
     "clearQuery": "入力をクリア",
-    "rewriteHint": "単語は空白で区切ってAND検索 · 「-」で除外 · 「|」でOR · 「単語@スコア」で最低スコア指定 · 全角文字は半角に折りたたみ",
+    "rewriteHint": "単語は空白で区切ってAND検索 · 「-」で除外 · 「|」でOR · 「単語{'@'}スコア」で最低スコア指定 · 全角文字は半角に折りたたみ",
     "sourceFilter": "ソース",
     "allSources": "すべてのソース",
     "fromDate": "インデックス開始",
@@ -610,7 +610,7 @@
     "next": "次へ",
     "close": "閉じる（Esc）",
     "matches": "⌖ {count} 件ヒット",
-    "atTime": "@{time} 秒",
+    "atTime": "{time} 秒",
     "fullscreen": "全画面切り替え（F）",
     "hints": "Space=次へ · ←→=前/次 · Esc=閉じる · ホイール=ズーム · ドラッグ=移動 · F=全画面"
   },
