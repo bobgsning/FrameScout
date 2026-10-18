@@ -55,7 +55,7 @@ Most "AI search" makes you type one sentence and hope. FrameScout lets you **com
 - **Type** — image or video
 - **Seed image** — find visuals similar to a reference picture
 
-Looking for *"the Tokyo trip with the red sign, but no people"*? That's three rows, not a wish. And because there's **no symbol syntax to learn**, everything you type is matched literally — `e-mail`, `-5°C`, and `会议@2024` are searched exactly as written. Saved searches (Smart Folders) store the very same condition set and run through the same evaluator as the search bar, so a folder is just a query you don't have to retype.
+Looking for *"the Tokyo trip with the red sign, but no people"*? That's three rows, not a wish. And because there's **no symbol syntax to learn**, everything you type is matched literally — `e-mail`, `-5°C`, and `会议@2024` are searched exactly as written. Saved searches (Smart Folders) keep that exact condition set and reuse the same evaluator as the search bar — so a Smart Folder is essentially a saved query you can re-run anytime without rebuilding it.
 
 ---
 
