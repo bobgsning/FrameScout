@@ -14,6 +14,7 @@ import type { SearchResult } from '@/types/search'
 import { isVideo } from '@/utils/media'
 import { getSearchNumericScore, getNumericScore } from '@/utils/score'
 import { t } from '@/i18n'
+import { localizeBackend } from '@/utils/backendText'
 import { useToast } from '@/composables/useToast'
 import { usePreferences } from '@/composables/usePreferences'
 import { invoke } from '@tauri-apps/api/core'
@@ -122,7 +123,14 @@ export async function exportMarkdown(results: SearchResult[], filename = 'frames
     if (r.timestamp > 0) lines.push(t('export.frameTime', { time: r.timestamp.toFixed(1) }))
     lines.push(t('export.scoreLine', { score: humanScore(r) }))
     if (r.match_count) lines.push(t('export.matchCountLine', { count: r.match_count }))
-    if (r.matched_tags?.length) lines.push(t('export.matchedChannels', { channels: r.matched_tags.join(' / ') }))
+    // 后端给的是 TAG_* 码，导出的 Markdown 是给人读的，必须本地化
+    if (r.matched_tags?.length) {
+      lines.push(
+        t('export.matchedChannels', {
+          channels: r.matched_tags.map((tag) => localizeBackend(tag)).join(' / '),
+        })
+      )
+    }
     if (r.ocr_text) {
       lines.push('')
       lines.push(t('export.ocrSection'))

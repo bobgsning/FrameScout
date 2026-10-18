@@ -42,10 +42,12 @@ Thumbs.db
 # Nuitka crash reports (generated on failed builds)
 src/inference-worker/nuitka-crash-report.xml
 
+# FFmpeg download cache (build-time only, ~160MB zip — never commit)
+src/inference-worker/.ffmpeg-cache/
+
 # Model files (downloaded separately via scripts/download_models.py)
 src/inference-worker/models/
 models/
-!src/FrameScout-UI/src-tauri/src/models/
 
 # Database files (user data)
 *.db
@@ -76,6 +78,7 @@ src/FrameScout-UI/src-tauri/bin/
 src/inference-worker/developer_private_key.pem
 src/inference-worker/developer_public_key.pem
 src/inference-worker/license_gen.py
+src/inference-worker/license_gen_pro.py
 
 # ========== Notes ==========
 src/inference-worker/Notes.txt

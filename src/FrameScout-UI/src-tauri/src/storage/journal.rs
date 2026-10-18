@@ -22,6 +22,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection};
 
+use crate::error::{
+    ec1, ERR_JOURNAL_BEGIN_BATCH_FAILED, ERR_JOURNAL_FINISH_BATCH_FAILED,
+    ERR_JOURNAL_FINISH_CANCELLED_BATCH_FAILED, ERR_JOURNAL_INSERT_FILES_FAILED,
+    ERR_JOURNAL_MARK_INTERRUPTED_FAILED, ERR_JOURNAL_PRUNE_BY_AGE_FAILED,
+    ERR_JOURNAL_PRUNE_BY_COUNT_FAILED, ERR_JOURNAL_RECORD_EVENT_FAILED,
+    ERR_JOURNAL_SNAPSHOT_FRAMES_FAILED, ERR_JOURNAL_UPSERT_FILES_FAILED,
+};
 use crate::time_util::{utc_now_iso, utc_stamp};
 
 /// mtime 差异的宽容阈值（毫秒）。
@@ -144,7 +151,7 @@ pub fn upsert_file_observed(
                     last_seen_at   = excluded.last_seen_at",
                 params![path, s.mtime_ms, s.size, now],
             )
-            .map_err(|e| format!("upsert files failed: {}", e))?;
+            .map_err(|e| ec1(ERR_JOURNAL_UPSERT_FILES_FAILED, e))?;
         }
         None => {
             // 这次没看到文件：只建/保留锚点，绝不改写 observed_* 与 last_seen_at
@@ -155,7 +162,7 @@ pub fn upsert_file_observed(
                  ON CONFLICT(path) DO NOTHING",
                 params![path, now],
             )
-            .map_err(|e| format!("insert files failed: {}", e))?;
+            .map_err(|e| ec1(ERR_JOURNAL_INSERT_FILES_FAILED, e))?;
         }
     }
 
@@ -187,7 +194,7 @@ pub fn snapshot_frames_before_replace(
          FROM frame_vectors WHERE path = ?3",
         params![backup_batch_id, utc_now_iso(), path],
     )
-    .map_err(|e| format!("snapshot frames failed: {}", e))
+    .map_err(|e| ec1(ERR_JOURNAL_SNAPSHOT_FRAMES_FAILED, e))
 }
 
 /// 启动时的备份裁剪：按路径只留最近 `keep` 份，并清掉超过 `max_age_days` 天的。
@@ -211,7 +218,7 @@ pub fn prune_reindex_backups(conn: &Connection, keep: i64, max_age_days: i64) ->
                  )",
                 params![keep],
             )
-            .map_err(|e| format!("prune backups by count failed: {}", e))?;
+            .map_err(|e| ec1(ERR_JOURNAL_PRUNE_BY_COUNT_FAILED, e))?;
         total += by_count;
     }
 
@@ -223,7 +230,7 @@ pub fn prune_reindex_backups(conn: &Connection, keep: i64, max_age_days: i64) ->
                 "DELETE FROM reindex_backup WHERE created_at < ?1",
                 params![cutoff],
             )
-            .map_err(|e| format!("prune backups by age failed: {}", e))?;
+            .map_err(|e| ec1(ERR_JOURNAL_PRUNE_BY_AGE_FAILED, e))?;
         total += by_age;
     }
 
@@ -308,7 +315,7 @@ pub fn record_event(
          VALUES (?1, ?2, ?3, ?4, ?5)",
         params![batch_id, path, event_type.as_str(), utc_now_iso(), payload_json],
     )
-    .map_err(|e| format!("record event failed: {}", e))?;
+    .map_err(|e| ec1(ERR_JOURNAL_RECORD_EVENT_FAILED, e))?;
     Ok(())
 }
 
@@ -356,7 +363,7 @@ pub fn begin_batch(
          VALUES (?1, ?2, ?3, 'running')",
         params![batch_id, batch_type.as_str(), utc_now_iso()],
     )
-    .map_err(|e| format!("begin batch failed: {}", e))?;
+    .map_err(|e| ec1(ERR_JOURNAL_BEGIN_BATCH_FAILED, e))?;
     Ok(batch_id)
 }
 
@@ -370,7 +377,7 @@ pub fn finish_batch(conn: &Connection, batch_id: &str, summary_json: &str) -> Re
          WHERE batch_id = ?3",
         params![utc_now_iso(), summary_json, batch_id],
     )
-    .map_err(|e| format!("finish batch failed: {}", e))?;
+    .map_err(|e| ec1(ERR_JOURNAL_FINISH_BATCH_FAILED, e))?;
     Ok(())
 }
 
@@ -384,7 +391,7 @@ pub fn finish_batch_cancelled(conn: &Connection, batch_id: &str, summary_json: &
          WHERE batch_id = ?3",
         params![utc_now_iso(), summary_json, batch_id],
     )
-    .map_err(|e| format!("finish cancelled batch failed: {}", e))?;
+    .map_err(|e| ec1(ERR_JOURNAL_FINISH_CANCELLED_BATCH_FAILED, e))?;
     Ok(())
 }
 
@@ -397,7 +404,7 @@ pub fn mark_interrupted_batches(conn: &Connection) -> Result<usize, String> {
              WHERE status = 'running' AND finished_at IS NULL",
             [],
         )
-        .map_err(|e| format!("mark interrupted batches failed: {}", e))?;
+        .map_err(|e| ec1(ERR_JOURNAL_MARK_INTERRUPTED_FAILED, e))?;
     Ok(n)
 }
 

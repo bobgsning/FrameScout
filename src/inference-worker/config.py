@@ -72,9 +72,29 @@ BGE_MAX_TOKENS = 512
 
 
 def get_base_path():
-    """兼容 PyInstaller 打包和源码运行，返回可执行文件/主模块所在目录。"""
+    """兼容 PyInstaller/Nuitka 打包和源码运行，返回原始 exe / 主模块所在目录。
+
+    模型（models/）、ocr_manifest.json、ffmpeg.exe 均由 build_nuitka.ps1 复制到
+    ai_worker.exe 同级，故这里必须始终返回「原始 ai_worker.exe 所在目录」。
+
+    三种打包形态的差异（均已实测/源码核实）：
+    - Nuitka onefile：sys.executable 与 __file__ 都指向临时解压目录，只有
+      __compiled__.containing_dir 指向原始 exe 目录（onefile 下不额外剥层）。
+    - Nuitka onedir：__compiled__.containing_dir 会额外 STRIP_DIRNAME 一层、
+      返回的是 exe 的**父目录**，不能直接用；__file__ 默认 runtime 模式、
+      即 exe 所在目录。
+    - PyInstaller：sys.frozen 为真，sys.executable 即真实 exe 路径。
+    """
+    # Nuitka onefile：优先用 __compiled__.containing_dir（原始 exe 目录）。
+    try:
+        if getattr(__compiled__, "onefile", False):  # type: ignore[name-defined]
+            return __compiled__.containing_dir  # type: ignore[name-defined]
+    except NameError:
+        pass
+    # PyInstaller。
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
+    # Nuitka onedir / 源码运行：__file__ 位于 exe（或 config.py）所在目录。
     return os.path.dirname(os.path.abspath(__file__))
 
 

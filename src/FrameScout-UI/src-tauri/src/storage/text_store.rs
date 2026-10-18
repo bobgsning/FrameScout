@@ -11,6 +11,13 @@
 use rusqlite::{params, Connection};
 
 use crate::constants::BGE_DENSE_DIM;
+use crate::error::{
+    ec1, ec2, ERR_TEXT_DENSE_DIM_MISMATCH, ERR_TEXT_ENTRY_COUNT_BY_SOURCE_FAILED,
+    ERR_TEXT_ENTRY_COUNT_FAILED, ERR_TEXT_ENTRY_DELETE_BY_SOURCE_FAILED,
+    ERR_TEXT_ENTRY_DELETE_FAILED, ERR_TEXT_ENTRY_INSERT_FAILED, ERR_TEXT_ENTRY_LIST_FAILED,
+    ERR_TEXT_ENTRY_QUERY_FAILED, ERR_TEXT_FTS_PREPARE_FAILED, ERR_TEXT_FTS_QUERY_FAILED,
+    ERR_TEXT_VECTOR_DELETE_FAILED, ERR_TEXT_VECTOR_INSERT_FAILED,
+};
 use crate::model_code::{TextEntryItem, TextEntryListResponse};
 use super::vector_blob::encode_f32_le;
 
@@ -37,7 +44,7 @@ pub fn replace_text_vectors(
     rows: &[TextVectorRow],
 ) -> Result<(), String> {
     conn.execute("DELETE FROM media_text_vectors WHERE path = ?1", params![path])
-        .map_err(|e| format!("delete text vectors failed: {}", e))?;
+        .map_err(|e| ec1(ERR_TEXT_VECTOR_DELETE_FAILED, e))?;
 
     for row in rows {
         if row.dense.len() != BGE_DENSE_DIM {
@@ -57,7 +64,7 @@ pub fn replace_text_vectors(
              VALUES (?1, ?2, ?3, ?4, NULL, 0, NULL)",
             params![path, row.timestamp_ms, BGE_MODEL_TAG, blob],
         )
-        .map_err(|e| format!("insert text vector failed: {}", e))?;
+        .map_err(|e| ec1(ERR_TEXT_VECTOR_INSERT_FAILED, e))?;
     }
     Ok(())
 }
@@ -76,10 +83,10 @@ pub fn insert_text_entry(
     metadata_json: Option<&str>,
 ) -> Result<(), String> {
     if dense.len() != BGE_DENSE_DIM {
-        return Err(format!(
-            "dense dim mismatch: expected {}, got {}",
+        return Err(ec2(
+            ERR_TEXT_DENSE_DIM_MISMATCH,
             BGE_DENSE_DIM,
-            dense.len()
+            dense.len(),
         ));
     }
     let blob = encode_f32_le(dense);
@@ -101,7 +108,7 @@ pub fn insert_text_entry(
             metadata_json
         ],
     )
-    .map_err(|e| format!("insert text entry failed: {}", e))?;
+    .map_err(|e| ec1(ERR_TEXT_ENTRY_INSERT_FAILED, e))?;
     Ok(())
 }
 
@@ -134,7 +141,7 @@ pub fn list_text_entries(
                 params![trimmed],
                 |r| r.get(0),
             )
-            .map_err(|e| format!("count text entries (FTS) failed: {}", e))?;
+            .map_err(|e| ec1(ERR_TEXT_ENTRY_COUNT_FAILED, e))?;
         let mut stmt = conn
             .prepare(
                 "SELECT te.entry_id, te.source_uri, te.content, te.index_time, te.metadata_json
@@ -143,7 +150,7 @@ pub fn list_text_entries(
                  WHERE text_entries_fts MATCH ?1
                  ORDER BY te.index_time DESC LIMIT ?2 OFFSET ?3",
             )
-            .map_err(|e| format!("prepare FTS query failed: {}", e))?;
+            .map_err(|e| ec1(ERR_TEXT_FTS_PREPARE_FAILED, e))?;
         let rows = stmt
             .query_map(params![trimmed, limit_i64, offset], |row| {
                 Ok(TextEntryItem {
@@ -154,7 +161,7 @@ pub fn list_text_entries(
                     metadata_json: row.get(4).ok(),
                 })
             })
-            .map_err(|e| format!("FTS query failed: {}", e))?
+            .map_err(|e| ec1(ERR_TEXT_FTS_QUERY_FAILED, e))?
             .filter_map(|r| r.ok())
             .collect();
         (total as usize, rows)
@@ -168,14 +175,14 @@ pub fn list_text_entries(
                 params![BGE_MODEL_TAG],
                 |r| r.get(0),
             )
-            .map_err(|e| format!("count text entries failed: {}", e))?
+            .map_err(|e| ec1(ERR_TEXT_ENTRY_COUNT_FAILED, e))?
         } else {
             conn.query_row(
                 "SELECT COUNT(*) FROM text_entries WHERE model = ?1 AND content LIKE ?2 ESCAPE '\\'",
                 params![BGE_MODEL_TAG, pattern],
                 |r| r.get(0),
             )
-            .map_err(|e| format!("count text entries failed: {}", e))?
+            .map_err(|e| ec1(ERR_TEXT_ENTRY_COUNT_FAILED, e))?
         };
         let mut stmt = if trimmed.is_empty() {
             conn.prepare(
@@ -189,16 +196,16 @@ pub fn list_text_entries(
                  FROM text_entries WHERE model = ?1 AND content LIKE ?2 ESCAPE '\\'
                  ORDER BY index_time DESC LIMIT ?3 OFFSET ?4",
             )
-        }.map_err(|e| format!("prepare list text entries failed: {}", e))?;
+        }.map_err(|e| ec1(ERR_TEXT_ENTRY_LIST_FAILED, e))?;
 
         let rows = if trimmed.is_empty() {
             stmt.query_map(params![BGE_MODEL_TAG, limit_i64, offset], map_text_entry_row)
-                .map_err(|e| format!("query text entries failed: {}", e))?
+                .map_err(|e| ec1(ERR_TEXT_ENTRY_QUERY_FAILED, e))?
                 .filter_map(|r| r.ok())
                 .collect()
         } else {
             stmt.query_map(params![BGE_MODEL_TAG, pattern, limit_i64, offset], map_text_entry_row)
-                .map_err(|e| format!("query text entries failed: {}", e))?
+                .map_err(|e| ec1(ERR_TEXT_ENTRY_QUERY_FAILED, e))?
                 .filter_map(|r| r.ok())
                 .collect()
         };
@@ -240,7 +247,7 @@ pub fn delete_text_entries(conn: &Connection, entry_ids: &[String]) -> Result<us
     for id in entry_ids {
         removed += conn
             .execute("DELETE FROM text_entries WHERE entry_id = ?1", params![id])
-            .map_err(|e| format!("delete text entry failed: {}", e))?;
+            .map_err(|e| ec1(ERR_TEXT_ENTRY_DELETE_FAILED, e))?;
     }
     Ok(removed)
 }
@@ -251,7 +258,7 @@ pub fn delete_text_entries(conn: &Connection, entry_ids: &[String]) -> Result<us
 pub fn delete_text_entries_by_source(conn: &Connection, source_uri: &str) -> Result<usize, String> {
     let removed = conn
         .execute("DELETE FROM text_entries WHERE source_uri = ?1", params![source_uri])
-        .map_err(|e| format!("delete text entries by source failed: {}", e))?;
+        .map_err(|e| ec1(ERR_TEXT_ENTRY_DELETE_BY_SOURCE_FAILED, e))?;
     Ok(removed)
 }
 
@@ -264,6 +271,6 @@ pub fn count_text_entries_by_source(conn: &Connection, source_uri: &str) -> Resu
             params![source_uri],
             |row| row.get(0),
         )
-        .map_err(|e| format!("count text entries by source failed: {}", e))?;
+        .map_err(|e| ec1(ERR_TEXT_ENTRY_COUNT_BY_SOURCE_FAILED, e))?;
     Ok(count as usize)
 }

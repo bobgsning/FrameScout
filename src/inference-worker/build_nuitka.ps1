@@ -98,6 +98,68 @@ if ($capiFiles.Count -eq 0) {
     throw "$capiDir 下无任何文件——onnxruntime 包已损坏（capi 二进制被互删）。请按上方指引修复环境。"
 }
 
+# ------------------------------------------------------------------
+# 1. 准备 LGPL FFmpeg（兜底解码 + 切片段共用）
+# ------------------------------------------------------------------
+# FFmpeg 是 OpenCV 打不开容器/编解码器时的运行时兜底，也是「切片段」命令的执行者。
+# 发布包必须自带，且只能是 LGPL 构建（GPL 构建会把整个 Apache 2.0 发行包拖进 GPL），
+# 因此：固定版本 + SHA256 校验 + 下载后跑 -buildconf 断言无 --enable-gpl/nonfree。
+# 绝不取构建机 PATH 上可能的 GPL 版（这正是 PR #6 的踩坑点）。
+# 首次构建联网下载并本地缓存，之后走缓存离线可复现；上游滚动更新导致 SHA256 不符时
+# 会响亮失败，强制人工复核后再同步更新下面两个变量。
+$FfmpegVersion = "8.1"
+$FfmpegAsset = "ffmpeg-n${FfmpegVersion}-latest-win64-lgpl-${FfmpegVersion}.zip"
+$FfmpegSha256 = "283db422595be301e75f2cd5905d8823b34d331c856f8e3a19bc9f66ac668532"
+$FfmpegCacheDir = Join-Path $PSScriptRoot ".ffmpeg-cache"
+$FfmpegZip = Join-Path $FfmpegCacheDir $FfmpegAsset
+
+New-Item -ItemType Directory -Force -Path $FfmpegCacheDir | Out-Null
+if (-not (Test-Path $FfmpegZip)) {
+    $FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$FfmpegAsset"
+    Write-Host "⬇️  下载 LGPL FFmpeg ${FfmpegVersion}（首次联网，之后走本地缓存）..." -ForegroundColor Cyan
+    try {
+        Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegZip -UseBasicParsing
+    } catch {
+        throw "下载 FFmpeg 失败：$($_.Exception.Message)"
+    }
+}
+
+# SHA256 校验：与固定哈希不一致即中止（防篡改 / 上游滚动更新时强制人工复核）。
+$FfmpegActualHash = (Get-FileHash -Path $FfmpegZip -Algorithm SHA256).Hash.ToLower()
+if ($FfmpegActualHash -ne $FfmpegSha256) {
+    throw "FFmpeg SHA256 校验失败。期望 $FfmpegSha256，实际 $FfmpegActualHash。`nBtbN 可能已滚动更新该构建，请同步更新 build_nuitka.ps1 中的 `$FfmpegVersion 与 `$FfmpegSha256 后重试。"
+}
+
+# 解压出单个 ffmpeg.exe（静态构建：bin\ffmpeg.exe），缓存到固定位置供后续校验与复制。
+$FfmpegExe = Join-Path $FfmpegCacheDir "ffmpeg.exe"
+if (-not (Test-Path $FfmpegExe)) {
+    $FfmpegExtractDir = Join-Path $FfmpegCacheDir "extract"
+    if (Test-Path $FfmpegExtractDir) { Remove-Item -Recurse -Force $FfmpegExtractDir }
+    Expand-Archive -Path $FfmpegZip -DestinationPath $FfmpegExtractDir -Force
+    $FfmpegInner = Join-Path $FfmpegExtractDir "bin\ffmpeg.exe"
+    if (-not (Test-Path $FfmpegInner)) {
+        $FfmpegInner = Get-ChildItem -Path $FfmpegExtractDir -Recurse -Filter "ffmpeg.exe" |
+            Select-Object -First 1 -ExpandProperty FullName
+    }
+    if (-not $FfmpegInner) {
+        throw "解压后未找到 ffmpeg.exe，请检查 $FfmpegZip 的目录结构。"
+    }
+    Copy-Item -Force $FfmpegInner $FfmpegExe
+    Remove-Item -Recurse -Force $FfmpegExtractDir
+}
+
+# buildconf 断言：命中 GPL/nonfree 即中止（许可证护栏，一条都不能省）。
+# ⚠️ ffmpeg 把 banner 与配置信息写到 stderr；顶部 $ErrorActionPreference="Stop" 会让
+# `2>&1` 把 stderr 包装成 NativeCommandError 并中断打包。故临时降级 EAP，捕获后恢复。
+$prevErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$FfmpegBuildConf = & $FfmpegExe -buildconf 2>&1 | Out-String
+$ErrorActionPreference = $prevErrorActionPreference
+if ($FfmpegBuildConf -match "--enable-gpl" -or $FfmpegBuildConf -match "--enable-nonfree") {
+    throw "下载的 FFmpeg 是 GPL/nonfree 构建，违反 LGPL 分发要求，已中止。请更换为 LGPL 构建。"
+}
+Write-Host "✔ LGPL FFmpeg ${FfmpegVersion} 就绪（SHA256 + buildconf 断言通过）：$FfmpegExe" -ForegroundColor Green
+
 $outDir = "dist_nuitka"
 $nuitkaArgs = @(
     "main.py",
@@ -230,6 +292,11 @@ if (Test-Path $manifestSrc) {
 } else {
     Write-Host "⚠️ 未找到 ocr_manifest.json，跳过复制（多语言 OCR 将降级为默认中英）。" -ForegroundColor Yellow
 }
+
+# FFmpeg 兜底解码 + 切片段共用：复制到 exe 同级，与 config.get_base_path() 解析一致。
+Copy-Item -Force $FfmpegExe (Join-Path $exeDir "ffmpeg.exe")
+Write-Host "📦 复制 ffmpeg.exe → $exeDir" -ForegroundColor Cyan
+
 Write-Host "✔ 产物：$exePath" -ForegroundColor Green
 
 # ------------------------------------------------------------------
@@ -259,6 +326,9 @@ if (-not $SkipDeploy) {
         }
         if (Test-Path (Join-Path $exeDir "ocr_manifest.json")) {
             Copy-Item -Force (Join-Path $exeDir "ocr_manifest.json") (Join-Path $tauriBin "ocr_manifest.json")
+        }
+        if (Test-Path (Join-Path $exeDir "ffmpeg.exe")) {
+            Copy-Item -Force (Join-Path $exeDir "ffmpeg.exe") (Join-Path $tauriBin "ffmpeg.exe")
         }
     }
     Write-Host "✔ 部署完成" -ForegroundColor Green

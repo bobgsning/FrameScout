@@ -12,6 +12,7 @@
  */
 import { ref } from 'vue'
 import { t } from '@/i18n'
+import { localizeBackend } from '@/utils/backendText'
 
 export type ToastKind = 'success' | 'error' | 'info' | 'warning'
 
@@ -85,19 +86,18 @@ function error(msg: string, dur?: number) { return push(msg, 'error', dur) }
 function info(msg: string, dur?: number) { return push(msg, 'info', dur) }
 function warning(msg: string, dur?: number) { return push(msg, 'warning', dur) }
 
-/** 把 Rust 错误字符串本地化为友好中文文案（P1-8 / 第三轮「错误文案直接甩 Rust 错误」）。 */
+/**
+ * 把后端错误码本地化为友好文案。
+ *
+ * 后端现在只回稳定错误码（见 `src-tauri/src/error.rs`），由 `localizeBackend`
+ * 按码查 i18n 的 `backend.*`；查不到（例如第三方库的原生英文错误）才退回到
+ * 「本地化前缀 + 截断原文」，保证用户至少能拿到可诊断的信息。
+ */
 function localizeError(err: unknown, fallback: string): string {
   if (err == null) return fallback
   const s = String(err)
-  // 常见 Rust/SQLite 错误模式本地化
-  if (s.includes('database is locked')) return t('toast.databaseLocked')
-  if (s.includes('Memory Matrix is empty')) return t('toast.emptyMatrix')
-  if (s.includes('No paths selected')) return t('toast.noPaths')
-  if (s.includes('Smart folder not found')) return t('toast.smartFolderNotFound')
-  if (s.includes('BGE-M3 text engine not available')) return t('toast.textEngineUnavailable')
-  if (s.includes('Failed to extract image vectors')) return t('toast.imageVectorFailed')
-  if (s.includes('Aborted after') && s.includes('consecutive failures')) return t('toast.abortedFailures')
-  if (s.includes('Trial Limit Reached')) return t('toast.trialLimit')
+  const localized = localizeBackend(s)
+  if (localized !== s) return localized
   // 兜底：截断过长的错误串
   return `${fallback}${t('toast.errorSeparator')}${s.length > 120 ? s.slice(0, 120) + '…' : s}`
 }

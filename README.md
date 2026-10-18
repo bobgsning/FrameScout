@@ -25,11 +25,19 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 📖 [Quick Start](#-quick-start-development) ·
 🤝 [Contributing](CONTRIBUTING.md)
 
-> 🆕 **v3.2.0 is here!** A sweeping polish pass across the whole product: normalized hybrid scoring (semantic search no longer drowned out by filename matches), scene-detection video frame extraction, FTS5 fault-tolerant text search, lightbox preview with OCR hit red-boxes, right-click open/reveal/copy, drag-to-search, scan pause/cancel with ETA, multi-select + CSV/Markdown/JSON export, database backup, and a full data-consistency pass. [See changelog](CHANGELOG.md#320---2026-10-08).
+> 🆕 **v3.3.0 is here!** The biggest release yet — a full logic-search refactor plus a data-safety pass:
+> - 🧮 **Condition-based search** — build a query as visible rows (keyword / date / batch / file type / seed image) combined with AND / OR / exclude and per-condition thresholds. The old symbol dialect (`-` / `@` / `|`) is gone; what you type is taken literally. Smart folders now save the complete condition set and run the exact same evaluator as the search bar.
+> - 💾 **Backup & restore** — one-click timestamped backups with rotation and integrity check, plus in-app restore: validity-checked preview with a frame-count comparison, and an automatic backup taken before restoring.
+> - 🗂️ **Partitioned search** — filter results by source batch, root-path prefix, or index-time range (also available on image search).
+> - 🧹 **Automatic cleanup policy** — event retention & backup rotation with toggles and a startup report, so nothing is ever deleted silently.
+> - 🌐 **True i18n** — the backend now returns stable error codes instead of English sentences, rendered in all 9 UI languages; zh-CN says 「文字识别」, zh-TW 「文字辨識」.
+> - 🎞️ **FFmpeg fallback + clip cutting** — MKV/AVI containers that OpenCV can't decode fall back to a bundled, hash-verified LGPL FFmpeg; cut a short clip around any hit frame straight from a card or the lightbox.
+>
+> [See changelog](CHANGELOG.md#330---2026-10-18) · [Release notes](https://github.com/bobgsning/FrameScout/releases)
 >
 > 🌐 **Multilingual interface**: 9 UI languages — English, 简体中文, 繁體中文, 日本語, Русский, 한국어, Deutsch, Français, Español — English by default. Switch anytime in **Settings → Language**.
 >
-> 🔤 **Multi-language OCR**: recognition for 4 built-in languages (English, 简体中文, 繁體中文, 日本語) plus 5 on-demand downloadable models (Русский, 한국어, Deutsch, Français, Español), with more coming soon. See [Localization & OCR Languages](#-localization--ocr-languages).
+> 🔤 **Multi-language OCR**: recognition for 4 built-in languages (English, 简体中文, 繁體中文, 日本語) plus 6 on-demand downloadable recognition models (Русский, 한국어, Deutsch, Français, Español, and an English-optimized variant), with more coming soon. See [Localization & OCR Languages](#-localization--ocr-languages).
 
 ---
 
@@ -59,15 +67,14 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet — and what
 | FlatVector search is O(N·d) | Will migrate to Faiss/Annoy when N > 50K |
 | No filesystem real-time monitoring | Manual re-scan; inotify/watchdog planned |
 | No LLM-generated captions | Deliberate — would require network access |
-| OCR supports 4 built-in + 5 downloadable languages (not the full 15 listed yet) | 6 more languages planned (RapidOCR rec-model swap) |
-| OCR on-demand is per-file only | Batch OCR for multiple files planned |
+| OCR covers 4 built-in + 6 downloadable recognition models (5 more languages + 1 English-optimized variant); 6 more planned | More RapidOCR rec-model weights from the official model library |
+| On-demand OCR runs from a card or the multi-select candidate set; no whole-library OCR button yet | Whole-library OCR entry planned |
 | PDF/DOCX ingestion not yet supported | Convert to .txt/.md first; text extraction planned |
-| Database backup is one-way (no in-app restore) | Restore by copying the .db back; in-app restore planned |
-| Smart folders save a single text query + channel toggles (no boolean/time/type/seed conditions yet) | Full condition editor planned |
+| In-app database restore takes effect on the next launch (pending-restore marker), not instantly | Seamless in-session restore planned |
+| Smart folders support full condition rows (AND/OR/negative/threshold/date/batch/seed image), but the backend can't pre-count condition-row folders (shown as "?") | Server-side counting for condition folders planned |
 | FTS5 full-text search covers imported text entries only (not OCR / filenames / notes) | Expanding coverage planned |
-| No partition / batch / date-range search filter | Planned |
-| Relevance thresholds & video frame-extraction limits are fixed, not user-adjustable | Settings planned |
-| Score breakdown bars are approximate for literal channels | Exact per-channel scores planned |
+| Video frame-extraction limits (fps / max frames / max duration) are fixed constants | Adjustable settings planned |
+| Hybrid fusion weights are fixed constants (relevance sensitivity is adjustable in three steps) | Per-channel weight tuning planned |
 
 ---
 
@@ -82,7 +89,10 @@ We believe in transparency. Here's what FrameScout *doesn't* do yet — and what
 | 📋 **Show All Mode** | Load every indexed file. New files are sorted by intake time and always appear at the top. |
 | 🎬 **Video Frame Indexing** | Automatically extracts key frames from videos (scene detection) and indexes them alongside static images. |
 | 🧩 **Visual Clustering** | Discover groups of similar images (duplicates, near-duplicates, burst shots) with one click. |
-| 📁 **Smart Folders** | Save a text search as a named, persistent folder that re-runs against your library whenever you open it. |
+| 🧮 **Condition-Based Search** | Build a query as visible rows — keyword / date / batch / file type / seed image — combined with AND / OR / exclude and per-condition thresholds. No symbol syntax to memorize. |
+| 📁 **Smart Folders** | Save a search — a plain query or multi-row conditions (date / batch / seed image, combined with AND / OR / negative terms) — as a named, persistent folder that re-runs against your library whenever you open it. Import / export as JSON. |
+| 💾 **Database Backup & Restore** | One-click timestamped backups (rotating) + integrity check + in-app restore with preview and pre-restore auto-backup. |
+| 🎞️ **Video Clip Cutting** | Cut a short clip around any hit frame, straight from a result card or the lightbox. |
 | 📝 **Personal Notes** | Attach markdown notes to any image. Notes are searchable. Next time you'll find it more effortlessly. |
 
 ### 🎬 Video Frame Semantic Search with Instant Seek
@@ -91,6 +101,7 @@ FrameScout doesn't just find videos — it pinpoints the **exact timestamp**:
 
 - **Semantic Matching**: Search using natural language (e.g., *"sunset under the pier"* or *"code snippet on screen"*).
 - **One-Click Instant Seek**: Click any search result to jump directly to that exact second (`01:23:45`) in your video.
+- **Robust Decoding**: containers OpenCV can't open (some MKV/AVI codecs) fall back to a bundled, hash-verified LGPL FFmpeg — no more silent zero-frame indexing.
 
 ---
 
@@ -105,7 +116,7 @@ FrameScout ships with a **9-language interface** and a **three-tier OCR recognit
 | Tier | Languages | Notes |
 | ---- | --------- | ----- |
 | 🟢 Built-in recognition | English, 简体中文, 繁體中文, 日本語 | Ship with the app; 繁體中文 & 日本語 models can be deleted |
-| 🔵 Downloadable recognition | Русский, 한국어, Deutsch, Français, Español | Models download on demand with progress, resume, SHA-256 verification & disk-space check; removable anytime |
+| 🔵 Downloadable recognition | Русский, 한국어, Deutsch, Français, Español + English (optimized) | Models download on demand with progress, resume, SHA-256 verification & disk-space check; removable anytime |
 | ⚪ Coming soon | Português, Italiano, Polski, Türkçe, Tiếng Việt, Bahasa Indonesia | Planned — shown in the list but not yet available |
 
 OCR recognition models are obtained from the official [RapidAI/RapidOCR](https://github.com/RapidAI/RapidOCR) model library (verified against official SHA-256 hashes) and stored under `models/ocr/`. Language metadata lives in a single source of truth — `src/inference-worker/ocr_manifest.json`.
@@ -116,14 +127,22 @@ OCR recognition models are obtained from the official [RapidAI/RapidOCR](https:/
 FrameScout/
 ├── src/
 │   ├── FrameScout-UI/               # Vue 3 + Tauri desktop app (Rust core)
+│   │   ├── src/                     # Frontend: components / composables / i18n (9 locales) / utils
+│   │   └── src-tauri/               # Rust backend: commands / storage / services / model_code
 │   ├── inference-worker/            # Python AI inference engine (ONNX + SigLIP 2 + RapidOCR)
 │   │   └── models/                  # Downloaded by scripts/download_models.py (git-ignored)
 │   │       ├── siglip2-base/        # SigLIP 2 ONNX models (vision + text)
-│   │       └── bge-m3/              # BGE-M3 text embeddings (optional)
+│   │       ├── bge-m3/              # BGE-M3 text embeddings (optional)
+│   │       └── ocr/                 # OCR rec models per language (en_opt / ru / ko / de / fr / es on demand)
 │   ├── proto/                       # ZeroMQ communication schema (Protobuf)
-├── scripts/                         # Utility scripts (model download, etc.)
+├── scripts/                         # Utility scripts (model download, i18n check, ...)
 ├── README.md
+├── README.zh-CN.md
 ├── CONTRIBUTING.md
+├── CHANGELOG.md
+├── THIRD_PARTY_NOTICES.md           # Third-party components & model weights (incl. bundled FFmpeg)
+├── COPYING.LGPLv2.1                 # LGPL v2.1 full text (bundled FFmpeg)
+├── AI_POLICY.md
 └── LICENSE
 ```
 
@@ -201,7 +220,7 @@ fused_score = sigmoid(cosine)   × semantic_weight  (semantic meaning)
             + filename_hit      × filename_weight   (path/name match)
 ```
 
-The normalization and fusion live in the frontend (`utils/score.ts`), and each channel can be toggled independently in the UI. Results are scored, ranked (with a stable tie-breaker), and paginated in real time. *Note: the fusion weights and relevance thresholds are currently fixed constants — see Known Limitations.*
+The normalization and fusion live in the frontend (`utils/score.ts`), and each channel can be toggled independently in the UI. Results are scored, ranked (with a stable tie-breaker), and paginated in real time. *Note: the fusion weights are currently fixed constants; relevance sensitivity (loose / standard / strict) is user-adjustable in Settings — see Known Limitations.*
 
 ### FlatVector Matrix Search
 
@@ -295,6 +314,8 @@ See `src/inference-worker/BUILD.md` §4 for details.
 
 1. The splash screen appears: *"FRAME SCOUT NEURAL LINK ESTABLISHING..."*
 2. SigLIP 2 + RapidOCR + BGE-M3 models load into memory (varies depending on hardware)
+
+> **Note:** The prebuilt package bundles **SigLIP 2 + RapidOCR only** — BGE-M3 is *not* included. The BGE-M3 text model loads only if you download it separately; without it, image & video search still works fully out of the box.
 3. You'll see the main interface with the search console
 4. Click **Browse** → select a folder containing images
 5. Click **Start Indexing** → watch the real-time extraction bus
@@ -306,7 +327,7 @@ See `src/inference-worker/BUILD.md` §4 for details.
 
 > **A note on honesty**: FrameScout is actively developed by a small team. The items below are implemented and functional, but a few are still in a "first version" state — the detailed gaps are listed up front in [Known Limitations](#-known-limitations). Everything marked "planned" is genuinely not built yet.
 
-### v3.2.0 (Current — 2026-10-08)
+### v3.2.0 (2026-10-08)
 
 - [x] Core search (text + image + OCR + notes)
 - [x] SigLIP 2 migration (768D embeddings, ONNX Runtime)
@@ -337,17 +358,60 @@ See `src/inference-worker/BUILD.md` §4 for details.
 - [x] Disk-offline ghost protection (offline drives greyed out & purge blocked)
 - [x] Batch note editing (apply one note to many selected files)
 
-### v3.3 (Planned)
+### v3.3.0 (Current release — 2026-10-18)
+
+Theme: **logic-search refactor + data-safety closure**. Full record in [CHANGELOG.md](./CHANGELOG.md#330---2026-10-18).
+
+**Search**
+
+- [x] Condition-based search — visible condition rows (keyword / date / batch / file type / seed image) with AND / OR / exclude and per-condition thresholds; the old `-` / `@` / `|` symbol dialect is removed and input is taken literally (`e-mail`, `-5°C`, `会议@2024` all search as typed)
+- [x] Smart folders save the **complete condition set** (`criteria_json`, migration M011) and run the same evaluator as the search bar; legacy folders keep working unchanged
+- [x] Smart folder import / export (JSON) with name dedup — never silently overwrites
+- [x] Partition search — source batch / root-path prefix / index-time range filters (also on image search)
+- [x] Sort selector — by relevance / index time / filename, with global ordering across pages
+- [x] 「试算」 count-only preview button for semantic conditions
+- [x] Search explainability — honest ✓ literal-hit bars (no fabricated percentages), adjustable relevance sensitivity (loose / standard / strict), low-score fold toggle, disclosed query rules
+- [x] Retired the legacy `search_images` / `execute_smart_folder` path — one engine, one semantics
+
+**Data safety**
+
+- [x] In-app database restore — validity check, preview with frame-count comparison, auto-backup before restoring (takes effect on next launch)
+- [x] Automatic cleanup policy — event retention & backup rotation with toggles, plus a startup report; `-1` = never
+- [x] Text-entry ingest preview — true pre-flight replace counts (`deleted_old_chunks`), no more full-library totals
+- [x] Clear error semantics — "found but all decode failed" (`ERR_SCAN_ALL_FAILED`) no longer masquerades as "no new files"
+
+**Experience**
+
+- [x] Scan pause / resume with corrected ETA (pause time excluded), per-file retry from the scan report
+- [x] First-screen auto-load of the browse list; search-state session restore (restores the UI, never auto-searches)
+- [x] Batch id humanized ("date + file count"), scan-report batch/type filter
+- [x] Image search no longer clobbers the query box; `enableOcr` persisted
+
+**i18n**
+
+- [x] Backend error-code contract — stable `CODE|param` codes (`error.rs`) rendered in all 9 locales; no more English sentences leaking into the UI
+- [x] zh-CN 「文字识别」 / zh-TW 「文字辨識」 terminology (English keeps OCR)
+- [x] All 9 locales fully populated (+92 keys for ja/ru/ko/de/fr/es, +32 new keys this cycle), validated by `scripts/check_i18n_backend.mjs`
+
+**Video**
+
+- [x] FFmpeg fallback decoding — bundled, hash-verified LGPL build for MKV/AVI containers, with a 30s read-timeout watchdog
+- [x] Video clip cutting from a hit frame (`cut_video_clip` + `ClipDialog`), output keeps the source container
+- [x] Dynamic index RPC timeout + socket linger hygiene — no more zombie worker processes
+
+**Fixes** — seed-image combined conditions returning 0 results, image-search fake 99.9% scores, date quick-ranges pointing into the future, folder rename wiping condition rows, pause timing leaking across scans, `root_path` boundary mismatches, duplicate locale keys, and more.
+
+### v3.4+ (Planned)
 
 - [ ] Faiss integration for N > 50K
 - [ ] Automatic port fallback (worker retries the next port if binding fails)
-- [ ] Smart-folder condition editor (boolean / time / file-type / seed-image conditions)
 - [ ] FTS5 coverage for OCR / filenames / notes
-- [ ] Partition / batch / date-range search
-- [ ] In-app database restore
 - [ ] Multi-modal fusion search (text + image simultaneously)
 - [ ] Binary PDF/DOCX text extraction
-- [ ] User-adjustable relevance thresholds & video extraction limits
+- [ ] Adjustable video frame-extraction limits
+- [ ] Seamless in-session database restore (no restart)
+- [ ] Server-side counting for condition-row smart folders
+- [ ] Whole-library OCR entry (beyond selected files)
 - [ ] macOS build (Apple Silicon native)
 - [ ] Linux build (AppImage + Flatpak)
 - [ ] Folder tree sidebar view
@@ -378,6 +442,23 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 FrameScout core is licensed under **Apache License 2.0**. See [LICENSE](LICENSE) for details. Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 © 2026 AetherFlow Labs
+
+---
+
+## 💎 Pro License — Complimentary Key
+
+As a **thank-you for your support** — and to make debugging easier — here is a complimentary **FrameScout Pro** license key. It removes the 100-frame trial limit for the full product.
+
+- **Valid until**: 2027-01-01 (version-locked to v3.3.0)
+- **How to activate**: open **Settings → License**, paste the key below, and confirm.
+
+```text
+ZnJhbWVzY291dC1vZmZsaW5lX2FpX3NlYXJjaC1nbG9iYWx8RlJBTUVTQ09VVF9QUk9fVjN8My4zLjB8MTc5ODc5MTYyMTo6YvXj2Vqs8SEOhkzJ5KqYRwfKkv2Gbs9uo0ZKA6MXHpDg96Uu7JNcyqjWRozYT01KmL5Vq7SkB6vDRsvdJkG5Dg==
+```
+
+> This key is provided as-is for support and debugging purposes. After it expires, the app falls back to the built-in trial (100 indexed frames); the trial limit itself lives in the source and can be modified or removed when building from source under Apache 2.0. For commercial licensing, please contact the author.
+
+🙏 **Thank you for your support!** · 感谢支持！· 感謝支持！· ありがとうございます！· Спасибо за поддержку！· 지원해 주셔서 감사합니다！· Danke für deine Unterstützung! · Merci pour votre soutien ! · ¡Gracias por tu apoyo!
 
 ---
 

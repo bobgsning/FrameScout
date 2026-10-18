@@ -8,7 +8,20 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
-use crate::constants::{IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, OCR_RESTART_THRESHOLD, RPC_TIMEOUT_INDEX_BASE_MS};
+use crate::constants::{
+    IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, OCR_RESTART_THRESHOLD, RPC_TIMEOUT_INDEX_BASE_MS,
+    RPC_TIMEOUT_INDEX_PER_FRAME_MS, RPC_INDEX_BUDGET_FRAMES_PER_VIDEO,
+};
+use crate::error::{
+    ec, ec1, ec2, ec3, ERR_LOCK_POISONED, ERR_OCR_NO_LANGUAGES, ERR_SCAN_ABORTED,
+    ERR_SCAN_ALL_FAILED, STATUS_SCAN_ABORTED, STATUS_SCAN_ALL_INDEXED, STATUS_SCAN_BATCH_FAILED,
+    STATUS_SCAN_BATCH_PROCESSING, STATUS_SCAN_CANCELLED, STATUS_SCAN_CANCELLED_NOTE,
+    STATUS_SCAN_DONE, STATUS_SCAN_ENGINE_RESET, STATUS_SCAN_ENGINE_RESET_NOTE,
+    STATUS_SCAN_INDEXING, STATUS_SCAN_NO_NEW_FILES, STATUS_SCAN_NO_NEW_FOUND,
+    STATUS_SCAN_PAUSED, STATUS_SCAN_PAUSED_NOTE, STATUS_SCAN_QUEUE_FINISHED,
+    STATUS_SCAN_RAPID_PRESCAN, STATUS_SCAN_RESUMED_NOTE, STATUS_SCAN_RESUMING,
+    STATUS_SCAN_TRIAL_LIMIT,
+};
 use crate::fs_trace;
 use crate::model_code::{AppState, ProgressPayload};
 use crate::proto::framescout as proto;
@@ -18,6 +31,28 @@ use crate::storage::normalize_path;
 use crate::storage::text_store::TextVectorRow;
 use crate::storage::vector_blob::encode_f32_le;
 use crate::time_util::utc_stamp;
+
+/// 按批内视频数动态计算索引 RPC 超时（P3 / PR #6 帧预算重调）。
+///
+/// 旧实现整批固定 60s，长视频批超时即失败。PR 用 3600×250ms=15 分钟/视频太保守，
+/// 这里用贴近实际的 `RPC_INDEX_BUDGET_FRAMES_PER_VIDEO`（600，约 150s/视频）作最坏
+/// 情况上界，在基础 60s 之上按视频数线性追加，既覆盖长视频，又不让超时失控膨胀。
+fn index_rpc_timeout_ms(paths: &[String]) -> i32 {
+    let video_count = paths
+        .iter()
+        .filter(|path| {
+            let ext = std::path::Path::new(path)
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            VIDEO_EXTENSIONS.contains(&ext.as_str())
+        })
+        .count() as i32;
+    let per_video =
+        RPC_INDEX_BUDGET_FRAMES_PER_VIDEO.saturating_mul(RPC_TIMEOUT_INDEX_PER_FRAME_MS);
+    RPC_TIMEOUT_INDEX_BASE_MS.saturating_add(video_count.saturating_mul(per_video))
+}
 
 pub async fn process_file_paths_internal(
     app: &AppHandle,
@@ -32,8 +67,8 @@ pub async fn process_file_paths_internal(
         let _ = app.emit(
             "scan-progress",
             ProgressPayload {
-                status: "✅ Done".to_string(),
-                file_path: "No new files to process".to_string(),
+                status: ec(STATUS_SCAN_DONE),
+                file_path: ec(STATUS_SCAN_NO_NEW_FILES),
                 current: 0,
                 total: 0,
                 new_files: vec![],
@@ -43,7 +78,7 @@ pub async fn process_file_paths_internal(
     }
 
     if enable_ocr && ocr_languages.is_empty() {
-        return Err("OCR enabled but no languages specified".to_string());
+        return Err(ec(ERR_OCR_NO_LANGUAGES));
     }
 
     let mut consecutive_failures = 0;
@@ -101,8 +136,8 @@ pub async fn process_file_paths_internal(
             let _ = app.emit(
                 "scan-progress",
                 ProgressPayload {
-                    status: "⏸ Paused by user".to_string(),
-                    file_path: "Scan paused, waiting to resume".to_string(),
+                    status: ec(STATUS_SCAN_PAUSED),
+                    file_path: ec(STATUS_SCAN_PAUSED_NOTE),
                     current: current_idx,
                     total: total_to_process,
                     new_files: vec![],
@@ -117,8 +152,8 @@ pub async fn process_file_paths_internal(
             let _ = app.emit(
                 "scan-progress",
                 ProgressPayload {
-                    status: "▶ Resuming...".to_string(),
-                    file_path: "Resuming scan".to_string(),
+                    status: ec(STATUS_SCAN_RESUMING),
+                    file_path: ec(STATUS_SCAN_RESUMED_NOTE),
                     current: current_idx,
                     total: total_to_process,
                     new_files: vec![],
@@ -133,8 +168,8 @@ pub async fn process_file_paths_internal(
             let _ = app.emit(
                 "scan-progress",
                 ProgressPayload {
-                    status: "🛑 Cancelled by user".to_string(),
-                    file_path: "Scan cancelled, partial results saved".to_string(),
+                    status: ec(STATUS_SCAN_CANCELLED),
+                    file_path: ec(STATUS_SCAN_CANCELLED_NOTE),
                     current: current_idx,
                     total: total_to_process,
                     new_files: vec![],
@@ -150,8 +185,8 @@ pub async fn process_file_paths_internal(
             let _ = app.emit(
                 "scan-progress",
                 ProgressPayload {
-                    status: "🔄 Resetting AI engine...".to_string(),
-                    file_path: "Releasing GPU resources to prevent exhaustion".to_string(),
+                    status: ec(STATUS_SCAN_ENGINE_RESET),
+                    file_path: ec(STATUS_SCAN_ENGINE_RESET_NOTE),
                     current: current_idx,
                     total: total_to_process,
                     new_files: vec![],
@@ -159,7 +194,7 @@ pub async fn process_file_paths_internal(
             );
 
             {
-                let mut worker = state.worker_process.lock().map_err(|e| e.to_string())?;
+                let mut worker = state.worker_process.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
                 restart_ai_worker(&mut worker);
             }
 
@@ -171,12 +206,12 @@ pub async fn process_file_paths_internal(
 
         // 检查试用限额
         {
-            let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+            let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
             if let Err(err_msg) = state.trial_guard.lock().unwrap().check_limit(memory.len()) {
                 let _ = app.emit(
                     "scan-progress",
                     ProgressPayload {
-                        status: "🛑 Trial Limit Reached".to_string(),
+                        status: ec(STATUS_SCAN_TRIAL_LIMIT),
                         file_path: err_msg.clone(),
                         current: current_idx,
                         total: total_to_process,
@@ -198,12 +233,13 @@ pub async fn process_file_paths_internal(
         };
         let payload = proto::encode_request::Payload::Batch(batch_payload);
 
-        match request_vector(payload, RPC_TIMEOUT_INDEX_BASE_MS) {
+        let rpc_timeout_ms = index_rpc_timeout_ms(chunk);
+        match request_vector(payload, rpc_timeout_ms) {
             Ok(frames) => {
                 consecutive_failures = 0;
 
                 let mut db = state.db_conn.lock().unwrap();
-                let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
+                let mut memory = state.memory_db.write().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
                 let tx_result = db.transaction();
                 let mut batch_added_files = Vec::new();
@@ -355,9 +391,11 @@ pub async fn process_file_paths_internal(
                 let _ = app.emit(
                     "scan-progress",
                     ProgressPayload {
-                        status: format!(
-                            "🚀 Batch Processing ({}/{}), {} per group...",
-                            current_idx, total_to_process, chunk.len()
+                        status: ec3(
+                            STATUS_SCAN_BATCH_PROCESSING,
+                            current_idx,
+                            total_to_process,
+                            chunk.len()
                         ),
                         file_path: chunk.last().cloned().unwrap_or_default(),
                         current: current_idx,
@@ -373,7 +411,7 @@ pub async fn process_file_paths_internal(
                 let _ = app.emit(
                     "scan-progress",
                     ProgressPayload {
-                        status: format!("❌ Batch Failed: {}", e),
+                        status: ec1(STATUS_SCAN_BATCH_FAILED, &e),
                         file_path: chunk.last().cloned().unwrap_or_default(),
                         current: current_idx,
                         total: total_to_process,
@@ -384,14 +422,14 @@ pub async fn process_file_paths_internal(
                     let _ = app.emit(
                         "scan-progress",
                         ProgressPayload {
-                            status: "🛑 Aborted: Too many consecutive failures".to_string(),
+                            status: ec(STATUS_SCAN_ABORTED),
                             file_path: chunk.last().cloned().unwrap_or_default(),
                             current: current_idx,
                             total: total_to_process,
                             new_files: vec![],
                         },
                     );
-                    return Err(format!("Aborted after {} consecutive failures: {}", consecutive_failures, e));
+                    return Err(ec2(ERR_SCAN_ABORTED, consecutive_failures, e));
                 }
             }
         }
@@ -402,14 +440,14 @@ pub async fn process_file_paths_internal(
         "scan-progress",
         ProgressPayload {
             status: if cancelled {
-                "🛑 Cancelled".to_string()
+                ec(STATUS_SCAN_CANCELLED)
             } else {
-                "✅ Done".to_string()
+                ec(STATUS_SCAN_DONE)
             },
             file_path: if cancelled {
-                "Scan cancelled, partial results saved".to_string()
+                ec(STATUS_SCAN_CANCELLED_NOTE)
             } else {
-                "Queue Finished".to_string()
+                ec(STATUS_SCAN_QUEUE_FINISHED)
             },
             current: if cancelled { current_idx } else { total_to_process },
             total: total_to_process,
@@ -462,6 +500,12 @@ pub async fn process_file_paths_internal(
         took
     );
 
+    // P2 / PR #6：零帧且存在失败路径时返回明确错误，而非误导性的「无新文件」。
+    // 区分「库里已全索引（真无新文件）」与「发现但全解码失败（0 帧）」。
+    if added_count == 0 && !failed_paths.is_empty() {
+        return Err(ec1(ERR_SCAN_ALL_FAILED, failed_paths.len()));
+    }
+
     Ok(added_count)
 }
 
@@ -479,14 +523,14 @@ pub async fn scan_folder(
     state.pause_flag.store(false, Ordering::Relaxed);
 
     {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         state.trial_guard.lock().unwrap().check_limit(memory.len())?;
     }
 
     let _ = app.emit(
         "scan-progress",
         ProgressPayload {
-            status: "🔍 Rapid Pre-scanning...".to_string(),
+            status: ec(STATUS_SCAN_RAPID_PRESCAN),
             file_path: "".to_string(),
             current: 0,
             total: 0,
@@ -514,7 +558,7 @@ pub async fn scan_folder(
                 if path_str.is_empty() {
                     continue;
                 }
-                let exists = { state.memory_db.read().map_err(|e| e.to_string())?.contains_path(&path_str) };
+                let exists = { state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?.contains_path(&path_str) };
                 if !exists {
                     pending_files.push(path_str);
                 }
@@ -526,8 +570,8 @@ pub async fn scan_folder(
         let _ = app.emit(
             "scan-progress",
             ProgressPayload {
-                status: "✅ Done".to_string(),
-                file_path: "No new files found".to_string(),
+                status: ec(STATUS_SCAN_DONE),
+                file_path: ec(STATUS_SCAN_NO_NEW_FOUND),
                 current: 0,
                 total: 0,
                 new_files: vec![],
@@ -552,13 +596,13 @@ pub async fn index_files(
     state.pause_flag.store(false, Ordering::Relaxed);
 
     {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         state.trial_guard.lock().unwrap().check_limit(memory.len())?;
     }
     let _ = app.emit(
         "scan-progress",
         ProgressPayload {
-            status: format!("📁 Indexing {} files...", file_paths.len()),
+            status: ec1(STATUS_SCAN_INDEXING, file_paths.len()),
             file_path: "".to_string(),
             current: 0,
             total: file_paths.len(),
@@ -570,7 +614,7 @@ pub async fn index_files(
     let total = file_paths.len();
 
     {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         for raw in &file_paths {
             // 落库前统一路径形态，与扫描路径保持同一规范。
             let path_str = normalize_path(raw);
@@ -587,8 +631,8 @@ pub async fn index_files(
         let _ = app.emit(
             "scan-progress",
             ProgressPayload {
-                status: "✅ Done".to_string(),
-                file_path: "All files already indexed".to_string(),
+                status: ec(STATUS_SCAN_DONE),
+                file_path: ec(STATUS_SCAN_ALL_INDEXED),
                 current: total,
                 total: total,
                 new_files: vec![],

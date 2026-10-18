@@ -14,6 +14,7 @@
 //     单帧簇静默消失。现单独计数「单帧簇 ≤50」，并在返回值中告知被截断的独特帧数。
 
 use tauri::State;
+use crate::error::{ec1, ERR_LOCK_POISONED};
 use crate::model_code::{AppState, ClusterGroup, ClusterResult};
 use crate::constants::CLUSTER_SAMPLE_THRESHOLD;
 
@@ -49,7 +50,7 @@ pub async fn cluster_similar_images(
     // 1) 快照 flat_vectors + metadata，然后释放读锁（P2-7 / C9）
     //    旧实现全程持读锁，聚类期间扫描/回写全部停摆。
     let (flat_vectors, dim, metadata) = {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         if memory.is_empty() {
             return Ok(ClusterResult {
                 groups: Vec::new(),

@@ -335,6 +335,9 @@
       @prev="lightboxPrev"
     />
 
+    <!-- 切片段时长弹层（P2-9 / 死命令 cut_video_clip 接线） -->
+    <ClipDialog />
+
     <!-- 候选集托盘（P1-10） -->
     <SelectionTray
       :results="results"
@@ -382,6 +385,7 @@ import PaginationBar from '@/components/search/PaginationBar.vue'
 import PromptDialog from '@/components/PromptDialog.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import Lightbox from '@/components/Lightbox.vue'
+import ClipDialog from '@/components/ClipDialog.vue'
 import SelectionTray from '@/components/SelectionTray.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import TimelineView from '@/components/TimelineView.vue'

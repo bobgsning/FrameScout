@@ -46,6 +46,7 @@ def download(url: str, dest: str, sha256: str | None) -> None:
     tmp = dest + ".part"
     hasher = hashlib.sha256()
 
+    # 注意：User-Agent 中的版本号应随应用版本更新（当前 3.2.0；v3.3.0 发版时一并 bump）。
     req = urllib.request.Request(url, headers={"User-Agent": "FrameScout/3.2.0"})
     with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as out:
         while True:

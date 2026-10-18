@@ -3,6 +3,7 @@
 use rusqlite::params;
 use tauri::State;
 use crate::constants::RPC_TIMEOUT_INDEX_BASE_MS;
+use crate::error::{ec1, ERR_LOCK_POISONED};
 use crate::model_code::AppState;
 use crate::proto::framescout as proto;
 use crate::services::request_vector;
@@ -32,7 +33,7 @@ pub async fn run_ocr_for_selected_files(
     // 债单 A13：超时 -1（无限等待）换常量，OCR 卡住时快速失败而非永久转圈。
     let frames = request_vector(payload, RPC_TIMEOUT_INDEX_BASE_MS)?;
     let db = state.db_conn.lock().unwrap();
-    let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
+    let mut memory = state.memory_db.write().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     let mut updated_count = 0;
     // OCR 任务只关心识别文本，因此刻意忽略向量。

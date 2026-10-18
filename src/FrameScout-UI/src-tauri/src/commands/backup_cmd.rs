@@ -8,6 +8,13 @@
 use std::fs;
 use std::path::PathBuf;
 use tauri::State;
+use crate::error::{
+    ec, ec1, ERR_BACKUP_DELETE_FAILED, ERR_BACKUP_DELETE_NOT_DB, ERR_BACKUP_DIR_CREATE_FAILED,
+    ERR_BACKUP_DIR_UNKNOWN, ERR_BACKUP_FAILED, ERR_BACKUP_FILE_NOT_FOUND, ERR_BACKUP_LIST_FAILED,
+    ERR_BACKUP_NOT_DB_FILE, ERR_BACKUP_REFUSE_NON_BACKUP, ERR_DB_FILE_NOT_FOUND,
+    ERR_DB_INTEGRITY_FAILED, ERR_DB_OPEN_FAILED, ERR_DB_PATH_UNKNOWN, ERR_DIR_READ_FAILED,
+    ERR_LOCK_POISONED, ERR_RESTORE_MARKER_FAILED,
+};
 use crate::model_code::AppState;
 use crate::storage::app_settings;
 use crate::fs_trace;
@@ -41,19 +48,19 @@ pub struct RestorePreview {
 /// 复制当前库为带时间戳的 `.db` 副本，按 `keep` 轮转（`-1` = 不限），返回路径与被删文件。
 fn do_backup(db_path: &str, keep: i64, exclude: Option<&str>) -> Result<BackupResult, String> {
     if db_path.is_empty() {
-        return Err("Database path unknown".to_string());
+        return Err(ec(ERR_DB_PATH_UNKNOWN));
     }
 
     let src = PathBuf::from(db_path);
     if !src.exists() {
-        return Err(format!("Database file not found: {}", db_path));
+        return Err(ec1(ERR_DB_FILE_NOT_FOUND, db_path));
     }
 
     let backup_dir = src
         .parent()
         .map(|p| p.join("backups"))
-        .ok_or("Cannot determine backup directory")?;
-    fs::create_dir_all(&backup_dir).map_err(|e| format!("Failed to create backup directory: {}", e))?;
+        .ok_or_else(|| ec(ERR_BACKUP_DIR_UNKNOWN))?;
+    fs::create_dir_all(&backup_dir).map_err(|e| ec1(ERR_BACKUP_DIR_CREATE_FAILED, e))?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -63,7 +70,7 @@ fn do_backup(db_path: &str, keep: i64, exclude: Option<&str>) -> Result<BackupRe
     let backup_path = backup_dir.join(&backup_name);
 
     // 复制（含 WAL 文件）
-    fs::copy(&src, &backup_path).map_err(|e| format!("Backup failed: {}", e))?;
+    fs::copy(&src, &backup_path).map_err(|e| ec1(ERR_BACKUP_FAILED, e))?;
     let wal_path = src.with_extension("db-wal");
     if wal_path.exists() {
         let wal_backup = backup_path.with_extension("db-wal");
@@ -84,7 +91,7 @@ fn do_backup(db_path: &str, keep: i64, exclude: Option<&str>) -> Result<BackupRe
 /// 统计某个 `.db` 文件里的帧数（供恢复前对比「会丢多少」）。
 fn count_frames_of(path: &str) -> Result<i64, String> {
     let conn = rusqlite::Connection::open(path)
-        .map_err(|e| format!("Failed to open database for counting: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_OPEN_FAILED, e))?;
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM frame_vectors", [], |row| row.get(0))
         .unwrap_or(0);
@@ -95,9 +102,9 @@ fn count_frames_of(path: &str) -> Result<i64, String> {
 /// 自动轮转：只保留最近 N 份（N 由用户设置，`-1` = 不限），超出删除并回传被删文件名。
 #[tauri::command]
 pub async fn backup_database(state: State<'_, AppState>) -> Result<BackupResult, String> {
-    let db_path = state.db_path.lock().map_err(|e| e.to_string())?.clone();
+    let db_path = state.db_path.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?.clone();
     let keep = {
-        let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+        let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         app_settings::get_i64(&db, app_settings::KEY_BACKUP_KEEP_COUNT, 3)
     };
     do_backup(&db_path, keep, None)
@@ -106,32 +113,32 @@ pub async fn backup_database(state: State<'_, AppState>) -> Result<BackupResult,
 /// 完整性校验：PRAGMA integrity_check。
 #[tauri::command]
 pub async fn verify_integrity(state: State<'_, AppState>) -> Result<String, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     let result: String = db
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .map_err(|e| format!("integrity check failed: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_INTEGRITY_FAILED, e))?;
     Ok(result)
 }
 
 /// 列出已有备份。
 #[tauri::command]
 pub async fn list_backups(state: State<'_, AppState>) -> Result<Vec<BackupInfo>, String> {
-    let db_path = state.db_path.lock().map_err(|e| e.to_string())?.clone();
+    let db_path = state.db_path.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?.clone();
     if db_path.is_empty() {
         return Ok(Vec::new());
     }
     let src = PathBuf::from(&db_path);
     let backup_dir = src.parent()
         .map(|p| p.join("backups"))
-        .ok_or("Cannot determine backup directory")?;
+        .ok_or_else(|| ec(ERR_BACKUP_DIR_UNKNOWN))?;
 
     if !backup_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut backups = Vec::new();
-    for entry in fs::read_dir(&backup_dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
+    for entry in fs::read_dir(&backup_dir).map_err(|e| ec1(ERR_BACKUP_LIST_FAILED, e))? {
+        let entry = entry.map_err(|e| ec1(ERR_DIR_READ_FAILED, e))?;
         let name = entry.file_name().to_string_lossy().to_string();
         if !name.ends_with(".db") {
             continue;
@@ -170,17 +177,17 @@ pub struct BackupInfo {
 pub async fn preview_restore(state: State<'_, AppState>, path: String) -> Result<RestorePreview, String> {
     let normalized = path.replace('/', "\\");
     if !normalized.ends_with(".db") {
-        return Err("Only .db backup files can be restored".to_string());
+        return Err(ec(ERR_BACKUP_NOT_DB_FILE));
     }
     if !normalized.to_lowercase().contains("backups") {
-        return Err("Refusing to restore a non-backup file".to_string());
+        return Err(ec(ERR_BACKUP_REFUSE_NON_BACKUP));
     }
     let target = PathBuf::from(&normalized);
     if !target.exists() {
-        return Err(format!("Backup file not found: {}", normalized));
+        return Err(ec1(ERR_BACKUP_FILE_NOT_FOUND, normalized));
     }
 
-    let db_path = state.db_path.lock().map_err(|e| e.to_string())?.clone();
+    let db_path = state.db_path.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?.clone();
     let current_frames = count_frames_of(&db_path)?;
     let backup_frames = count_frames_of(&normalized)?;
     Ok(RestorePreview { current_frames, backup_frames })
@@ -190,20 +197,20 @@ pub async fn preview_restore(state: State<'_, AppState>, path: String) -> Result
 pub async fn restore_backup(state: State<'_, AppState>, path: String) -> Result<RestoreResult, String> {
     let normalized = path.replace('/', "\\");
     if !normalized.ends_with(".db") {
-        return Err("Only .db backup files can be restored".to_string());
+        return Err(ec(ERR_BACKUP_NOT_DB_FILE));
     }
     if !normalized.to_lowercase().contains("backups") {
-        return Err("Refusing to restore a non-backup file".to_string());
+        return Err(ec(ERR_BACKUP_REFUSE_NON_BACKUP));
     }
     let target = PathBuf::from(&normalized);
     if !target.exists() {
-        return Err(format!("Backup file not found: {}", normalized));
+        return Err(ec1(ERR_BACKUP_FILE_NOT_FOUND, normalized));
     }
 
     // M1'''' P0-2：恢复前自动备份当前库（作为回滚点），避免「一次点击永久丢索引」。
-    let db_path = state.db_path.lock().map_err(|e| e.to_string())?.clone();
+    let db_path = state.db_path.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?.clone();
     let keep = {
-        let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+        let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         app_settings::get_i64(&db, app_settings::KEY_BACKUP_KEEP_COUNT, 3)
     };
     // 第八轮核查修复：把「要恢复的目标备份」从轮转里排除，否则自动备份会按 mtime
@@ -219,7 +226,7 @@ pub async fn restore_backup(state: State<'_, AppState>, path: String) -> Result<
     if let Some(dir) = marker.parent() {
         let _ = fs::create_dir_all(dir);
     }
-    fs::write(&marker, &normalized).map_err(|e| format!("Failed to write restore marker: {}", e))?;
+    fs::write(&marker, &normalized).map_err(|e| ec1(ERR_RESTORE_MARKER_FAILED, e))?;
     fs_trace!(
         "restore marked (pending): {} (current {} frames -> backup {} frames)",
         normalized,
@@ -248,15 +255,15 @@ pub async fn delete_backup(path: String) -> Result<(), String> {
     let target = PathBuf::from(&path);
     let normalized = target.to_string_lossy().to_string();
     if !normalized.ends_with(".db") {
-        return Err("Only .db backup files can be deleted".to_string());
+        return Err(ec(ERR_BACKUP_DELETE_NOT_DB));
     }
     if !normalized.contains("backups") {
-        return Err("Refusing to delete a non-backup file".to_string());
+        return Err(ec(ERR_BACKUP_REFUSE_NON_BACKUP));
     }
     if !target.exists() {
         return Ok(()); // 已不存在，幂等
     }
-    fs::remove_file(&target).map_err(|e| format!("Failed to delete backup: {}", e))?;
+    fs::remove_file(&target).map_err(|e| ec1(ERR_BACKUP_DELETE_FAILED, e))?;
     // 同步清理可能存在的 WAL 副本
     let wal = target.with_extension("db-wal");
     if wal.exists() {

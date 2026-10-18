@@ -46,6 +46,10 @@ class InferenceServer:
         # 4. 初始化 ZeroMQ REP 套接字
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
+        # P3 / BUILD.md 承诺兑现：REP socket 设 LINGER=0，进程退出时立即释放端口与
+        # 待发消息，避免残留 ZMQ 句柄导致重启 worker 时端口被占用（此前文档声称已设、
+        # 代码实际没设，二者不一致）。
+        self.socket.setsockopt(zmq.LINGER, 0)
         self.socket.bind(f"tcp://127.0.0.1:{PORT}")
         print(f"🚀 AI Worker online! Listening on port {PORT}...")
 

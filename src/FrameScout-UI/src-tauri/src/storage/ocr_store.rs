@@ -9,6 +9,7 @@
 
 use rusqlite::{params, Connection};
 
+use crate::error::{ec1, ERR_OCR_ENTRIES_DELETE_FAILED, ERR_OCR_ENTRY_INSERT_FAILED};
 use crate::model_code::OcrLine;
 
 /// 覆盖写入某文件的全部 OCR 行级结果（先删后插）。
@@ -17,7 +18,7 @@ use crate::model_code::OcrLine;
 /// 要么一起回滚，不出现「向量在但文本块丢了」或反之的半截状态。
 pub fn replace_ocr_entries(conn: &Connection, path: &str, lines: &[OcrLine]) -> Result<(), String> {
     conn.execute("DELETE FROM media_ocr_entries WHERE path = ?1", params![path])
-        .map_err(|e| format!("delete ocr entries failed: {}", e))?;
+        .map_err(|e| ec1(ERR_OCR_ENTRIES_DELETE_FAILED, e))?;
 
     for line in lines {
         let (l, t, r, b) = line.bbox;
@@ -37,7 +38,7 @@ pub fn replace_ocr_entries(conn: &Connection, path: &str, lines: &[OcrLine]) -> 
                 line.payload_json
             ],
         )
-        .map_err(|e| format!("insert ocr entry failed: {}", e))?;
+        .map_err(|e| ec1(ERR_OCR_ENTRY_INSERT_FAILED, e))?;
     }
     Ok(())
 }

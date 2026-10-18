@@ -11,6 +11,8 @@
 
 use rusqlite::{params, Connection};
 
+use crate::error::{ec1, ERR_SETTING_SAVE_FAILED};
+
 /// 设置键名。
 pub const KEY_EVENT_RETENTION_DAYS: &str = "event_retention_days";
 pub const KEY_BACKUP_KEEP_COUNT: &str = "backup_keep_count";
@@ -33,7 +35,7 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<(), Stri
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![key, value],
     )
-    .map_err(|e| format!("set_app_setting failed: {}", e))?;
+    .map_err(|e| ec1(ERR_SETTING_SAVE_FAILED, e))?;
     Ok(())
 }
 

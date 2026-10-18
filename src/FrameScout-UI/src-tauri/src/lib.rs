@@ -15,14 +15,15 @@
 
 // =========================================================================
 //  FrameScout — Offline AI Search — Rust/Tauri Core
-//  Version: 3.2.0
-//  License: Apache-2.0 (core) / Proprietary (license verification)
+//  Version: 3.3.0
+//  License: Apache-2.0（license 模块的 Pro 验签源码同样开源，由 `pro` feature 门控）
 //
 //  库入口：所有后端模块在此聚合，桌面端与移动端共用同一个 run()。
 // =========================================================================
 
 mod commands;
 mod constants;
+pub mod error;
 mod license;
 mod logging;
 mod model_code;

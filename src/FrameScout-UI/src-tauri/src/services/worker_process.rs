@@ -7,6 +7,32 @@ use std::process::{Child, Command};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+/// 解析打包的 ai_worker 所在目录（`ffmpeg.exe` 与 `ai_worker.exe` 同级）。
+///
+/// 定位逻辑与 `spawn_ai_worker` 一致：先试 exe 同级 `ai_worker\`，再试源码树
+/// `bin\ai_worker\`。未打包（开发态直接跑 Python 源码）时返回 None，调用方应回退 PATH。
+/// 供 `ffmpeg_cmd.rs` 解析「打包的 ffmpeg.exe」复用，保证切片段与兜底解码共用同一处。
+pub fn ai_worker_dir() -> Option<PathBuf> {
+    let current_exe = env::current_exe().ok()?;
+    let exe_dir = current_exe.parent()?;
+    let ai_worker_name = if cfg!(target_os = "windows") {
+        "ai_worker.exe"
+    } else {
+        "ai_worker"
+    };
+
+    let mut dir = exe_dir.join("ai_worker");
+    if !dir.join(ai_worker_name).exists() {
+        let project_src = exe_dir.parent()?.parent()?;
+        let alt = project_src.join("bin").join("ai_worker");
+        if alt.join(ai_worker_name).exists() {
+            dir = alt;
+        }
+    }
+
+    dir.join(ai_worker_name).exists().then_some(dir)
+}
+
 pub fn spawn_ai_worker() -> Child {
     // 1. 清理可能残留的旧 worker 进程
     #[cfg(target_os = "windows")]

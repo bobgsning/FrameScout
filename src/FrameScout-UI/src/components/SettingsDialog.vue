@@ -270,8 +270,8 @@ const languageOptions = [
 // 第八轮：补 100 —— 大库翻页太碎，100 张/页是设计文档点名要的档位。
 const pageSizeOptions = [4, 8, 16, 32, 50, 100]
 
-// 应用版本号（从 package.json 读取，Vite 注入）
-const appVersion = __APP_VERSION__ || '3.2.0'
+// 应用版本号（从 package.json 读取，Vite 注入；兜底值仅防 define 未生效）
+const appVersion = __APP_VERSION__ || '3.3.0'
 
 function clearFolderPath() {
   folderPath.value = ''

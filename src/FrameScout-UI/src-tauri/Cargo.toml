@@ -1,6 +1,6 @@
 [package]
 name = "framescout-ui"
-version = "3.2.0"
+version = "3.3.0"
 description = "A fully-local, privacy-first, multi-modal second brain for Windows. Search your images and videos with natural language."
 authors = ["bobgsning <bobGsning@outlook.com>"]
 license = "Apache-2.0"

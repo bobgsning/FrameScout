@@ -22,6 +22,11 @@ use serde_json::json;
 use tauri::State;
 
 use crate::constants::RPC_TIMEOUT_INDEX_BASE_MS;
+use crate::error::{
+    ec, ec1, ERR_DB_TX_BEGIN_FAILED, ERR_DB_TX_COMMIT_FAILED, ERR_DB_TX_ROLLBACK_FAILED,
+    ERR_LOCK_POISONED,
+    ERR_NO_PATHS_SELECTED, ERR_OCR_NO_LANGUAGES, ERR_WORKER_FAILED, ERR_WORKER_NO_FRAMES,
+};
 use crate::fs_trace;
 use crate::model_code::{AppState, EncodedFrame, ReindexFailure, ReindexResult};
 use crate::proto::framescout as proto;
@@ -40,15 +45,15 @@ pub async fn reindex_files(
     ocr_languages: Vec<String>,
 ) -> Result<ReindexResult, String> {
     if paths.is_empty() {
-        return Err("No paths selected".to_string());
+        return Err(ec(ERR_NO_PATHS_SELECTED));
     }
     if enable_ocr && ocr_languages.is_empty() {
-        return Err("OCR enabled but no languages specified".to_string());
+        return Err(ec(ERR_OCR_NO_LANGUAGES));
     }
 
     // mut：重索引需要在事务里整体替换旧帧行
-    let mut db = state.db_conn.lock().map_err(|e| e.to_string())?;
-    let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
+    let mut db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
+    let mut memory = state.memory_db.write().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     let batch_id = journal::begin_batch(&db, BatchType::Reindex, None)
         .unwrap_or_else(|e| format!("reindex_fallback_{}", e));
@@ -85,11 +90,11 @@ pub async fn reindex_files(
                                 &batch_id,
                                 path,
                                 EventType::ReindexFailed,
-                                Some(&json!({ "error": "worker returned no frames" }).to_string()),
+                                Some(&json!({ "error": ec(ERR_WORKER_NO_FRAMES) }).to_string()),
                             );
                             failed.push(ReindexFailure {
                                 path: path.clone(),
-                                error: "worker returned no frames".to_string(),
+                                error: ec(ERR_WORKER_NO_FRAMES),
                             });
                             continue;
                         }
@@ -111,7 +116,7 @@ pub async fn reindex_files(
                         Err(e) => {
                             failed.push(ReindexFailure {
                                 path: path.clone(),
-                                error: e.to_string(),
+                                error: ec1(ERR_DB_TX_BEGIN_FAILED, e),
                             });
                             continue;
                         }
@@ -234,11 +239,11 @@ pub async fn reindex_files(
                                     &batch_id,
                                     path,
                                     EventType::ReindexFailed,
-                                    Some(&json!({ "error": e.to_string() }).to_string()),
+                                    Some(&json!({ "error": ec1(ERR_DB_TX_COMMIT_FAILED, &e) }).to_string()),
                                 );
                                 failed.push(ReindexFailure {
                                     path: path.clone(),
-                                    error: e.to_string(),
+                                    error: ec1(ERR_DB_TX_COMMIT_FAILED, &e),
                                 });
                             }
                         },
@@ -249,13 +254,13 @@ pub async fn reindex_files(
                                 &batch_id,
                                 path,
                                 EventType::ReindexFailed,
-                                Some(&json!({ "error": e.to_string() }).to_string()),
-                            );
-                            failed.push(ReindexFailure {
+                                Some(&json!({ "error": ec1(ERR_DB_TX_ROLLBACK_FAILED, &e) }).to_string()),
+                                );
+                                failed.push(ReindexFailure {
                                 path: path.clone(),
-                                error: e.to_string(),
-                            });
-                        }
+                                error: ec1(ERR_DB_TX_ROLLBACK_FAILED, &e),
+                                });
+                                }
                     }
                 }
             }
@@ -267,11 +272,11 @@ pub async fn reindex_files(
                         &batch_id,
                         path,
                         EventType::ReindexFailed,
-                        Some(&json!({ "error": e.clone() }).to_string()),
+                        Some(&json!({ "error": ec1(ERR_WORKER_FAILED, &e) }).to_string()),
                     );
                     failed.push(ReindexFailure {
                         path: path.clone(),
-                        error: e.clone(),
+                        error: ec1(ERR_WORKER_FAILED, &e),
                     });
                 }
             }

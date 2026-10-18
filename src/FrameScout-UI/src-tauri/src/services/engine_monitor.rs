@@ -2,6 +2,7 @@
 
 use prost::Message;
 use tauri::{AppHandle, Emitter};
+use crate::error::{ec, ec2, STATUS_ENGINE_CONNECTING, STATUS_ENGINE_FAILED, STATUS_ENGINE_READY};
 use crate::proto::framescout as proto;
 
 /// 同步 PING 一次 worker，返回是否就绪。
@@ -66,7 +67,7 @@ pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
                 "engine-status",
                 serde_json::json!({
                     "status": "ready",
-                    "message": "AI Worker is ready!"
+                    "message": ec(STATUS_ENGINE_READY)
                 }),
             );
             println!("✅ AI Worker is ready!");
@@ -80,7 +81,7 @@ pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
                 "status": "connecting",
                 "retry": retries,
                 "max_retries": MAX_RETRIES,
-                "message": format!("Connecting... attempt {}/{}", retries, MAX_RETRIES)
+                "message": ec2(STATUS_ENGINE_CONNECTING, retries, MAX_RETRIES)
             }),
         );
 
@@ -89,7 +90,7 @@ pub fn wait_for_engine_and_notify(app_handle: AppHandle) {
                 "engine-status",
                 serde_json::json!({
                     "status": "error",
-                    "message": "AI Worker failed to become ready. Please check models and restart."
+                    "message": ec(STATUS_ENGINE_FAILED)
                 }),
             );
             panic!("AI Worker failed to become ready within {} seconds.", MAX_RETRIES * 3);

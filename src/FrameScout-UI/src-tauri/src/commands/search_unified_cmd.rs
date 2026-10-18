@@ -14,6 +14,10 @@
 
 use std::collections::HashMap;
 use tauri::State;
+use crate::error::{
+    ec, ec1, ERR_DB_PREPARE_FAILED, ERR_DB_QUERY_FAILED, ERR_INDEX_EMPTY, ERR_LOCK_POISONED, TAG_FILENAME,
+    TAG_NOTE, TAG_OCR, TAG_UNKNOWN, TAG_VISUAL,
+};
 use crate::model_code::{AppState, OcrLineHit};
 use crate::services::request_vector;
 use crate::proto::framescout as proto;
@@ -44,9 +48,9 @@ pub async fn search_unified(
     file_types: Option<Vec<String>>,
 ) -> Result<UnifiedSearchResponse, String> {
     {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         if memory.is_empty() {
-            return Err("The library is empty. Please scan a folder first.".to_string());
+            return Err(ec(ERR_INDEX_EMPTY));
         }
     }
 
@@ -68,7 +72,7 @@ pub async fn search_unified(
     }
 
     // 3) 单遍扫描矩阵，对每个帧计算各通道分数
-    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+    let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     let vector_scores: HashMap<usize, f32> = if use_vector && !text_vec.is_empty() {
         memory.search(&text_vec, memory.len()).into_iter().collect()
@@ -81,13 +85,13 @@ pub async fn search_unified(
     // M2''' 分区搜索：按批次过滤时，先从 SQL 取该批次的所有路径，构建大小写折叠键集合。
     let batch_paths: Option<std::collections::HashSet<String>> = match &batch_id {
         Some(bid) if !bid.is_empty() => {
-            let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+            let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
             let mut stmt = db
                 .prepare("SELECT DISTINCT path FROM frame_vectors WHERE indexed_in_batch_id = ?1")
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
             let paths: Vec<String> = stmt
                 .query_map(rusqlite::params![bid], |row| row.get::<_, String>(0))
-                .map_err(|e| e.to_string())?
+                .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
                 .filter_map(|r| r.ok())
                 .collect();
             drop(stmt);
@@ -183,7 +187,7 @@ pub async fn search_unified(
         if is_hit {
             // 债单 A8：补 ocr_lines 回传（旧实现恒空，红框数据到不了前端）
             let ocr_lines = if ocr_hit {
-                let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+                let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
                 fetch_ocr_hit_lines(&db, &meta.path, &query_tokens)
             } else {
                 Vec::new()
@@ -195,11 +199,11 @@ pub async fn search_unified(
                 timestamp: meta.timestamp,
                 score,
                 matched_tags: matches.iter().map(|m| match m.channel.as_str() {
-                    "visual" => "🖼️ Visual",
-                    "ocr" => "🔍 OCR",
-                    "note" => "📝 Note",
-                    "filename" => "📁 Filename",
-                    _ => "❓",
+                    "visual" => TAG_VISUAL,
+                    "ocr" => TAG_OCR,
+                    "note" => TAG_NOTE,
+                    "filename" => TAG_FILENAME,
+                    _ => TAG_UNKNOWN,
                 }).map(|s| s.to_string()).collect(),
                 ocr_text: meta.ocr_text.clone(),
                 user_note: meta.user_note.clone(),

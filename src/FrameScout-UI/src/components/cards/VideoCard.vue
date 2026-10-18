@@ -4,9 +4,11 @@ import type { SearchResult } from '@/types/search'
 import { getAssetUrl, withFrameAnchor } from '@/utils/media'
 import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore, SEMANTIC_BADGE_THRESHOLD } from '@/utils/score'
 import { highlight } from '@/utils/highlight'
+import { localizeBackend } from '@/utils/backendText'
 import OcrPanel from './OcrPanel.vue'
 import NotePanel from './NotePanel.vue'
 import ScoreBar from './ScoreBar.vue'
+import { useClip } from '@/composables/useClip'
 
 const props = defineProps<{
   item: SearchResult
@@ -18,6 +20,8 @@ const emit = defineEmits<{
   (e: 'video-error'): void
   (e: 'video-loaded'): void
 }>()
+
+const { requestClip } = useClip()
 
 /** 视频定位到命中的具体帧 */
 const src = computed(() => withFrameAnchor(getAssetUrl(props.item.path), props.item.timestamp))
@@ -40,7 +44,9 @@ const highlightedPath = computed(() =>
 
 /** 过滤掉语义标记标签，改由分数徽章统一表达 */
 const visibleTags = computed(() =>
-  (props.item.matched_tags || []).filter((t) => !t.includes('Semantic'))
+  (props.item.matched_tags || [])
+    .filter((t) => !t.includes('Semantic'))
+    .map((tag) => localizeBackend(tag))
 )
 </script>
 
@@ -61,6 +67,10 @@ const visibleTags = computed(() =>
       <p class="badge-timestamp">{{ $t('cards.sec', { time: props.item.timestamp }) }}</p>
       <p class="match-score">{{ scoreText }}</p>
     </div>
+
+    <button class="clip-card-btn" @click="requestClip(props.item)">
+      ✂️ {{ $t('clip.button') }}
+    </button>
 
     <div class="tags-wrapper">
       <span v-for="tag in visibleTags" :key="tag" class="tag-badge">{{ tag }}</span>
@@ -86,3 +96,20 @@ const visibleTags = computed(() =>
     <NotePanel :item="props.item" />
   </div>
 </template>
+
+<style scoped>
+.clip-card-btn {
+  margin-top: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: rgba(108, 142, 227, 0.12);
+  border: 1px solid rgba(108, 142, 227, 0.3);
+  border-radius: 6px;
+  color: #aebfff;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.clip-card-btn:hover {
+  background: rgba(108, 142, 227, 0.22);
+}
+</style>

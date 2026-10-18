@@ -18,6 +18,8 @@ FrameScout_Global/
     ├── config.py
     ├── framescout_pb2.py           # 由 framescout.proto 生成（步骤 2）
     ├── ocr_manifest.json           # OCR 语言目录单一事实源（随打包复制到 exe 同级）
+    ├── build_nuitka.ps1            # Nuitka 一键打包脚本（步骤 4）
+    ├── scripts\                    # benchmark.py 等
     ├── models\                 # SigLIP2 + BGE-M3 + OCR 多语言模型（OCR 默认权重随 wheel 自带）
     ├── .venv\
     └── requirements.txt
@@ -68,7 +70,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 > (.venv) python -c "import onnxruntime as ort; print(ort.get_available_providers())"
 > ```
 
-> 旧 `Notes.txt` 里散落的逐条 `pip install` 已统一进 `requirements.txt`，无需手动安装。
+> 历史安装笔记已并入 `requirements.txt`，无需手动逐条安装。
 
 ---
 
@@ -79,16 +81,17 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 **方式 A — 仓库自带 `protoc.exe`（推荐，离线稳定）：**
 
 ```powershell
-..\proto\protoc.exe --proto_path=..\proto --python_out=. ..\proto\framescout.proto
+..\proto\protoc.exe --proto_path=..\proto --python_out=. --pyi_out=. ..\proto\framescout.proto
 ```
 
 **方式 B — `grpcio-tools`（跨平台）：**
 
 ```powershell
-python -m grpc_tools.protoc --proto_path=..\proto --python_out=. ..\proto\framescout.proto
+python -m grpc_tools.protoc --proto_path=..\proto --python_out=. --pyi_out=. ..\proto\framescout.proto
 ```
 
-两条命令等价，产出同一个 `framescout_pb2.py`。校验：
+两条命令等价，同时产出 `framescout_pb2.py` 与 `framescout_pb2.pyi`（两者均在版本控制内）。
+也可从仓库根执行，见 [CONTRIBUTING.md](../../CONTRIBUTING.md) 的等价写法。校验：
 
 ```powershell
 python -c "import framescout_pb2; print('framescout_pb2 OK')"
@@ -144,6 +147,12 @@ python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connec
    `python scripts\download_ocr_models.py`，把 ch_tra/ja 下载到 `models\ocr\`。
    未运行则打包产物只含英文/简体中文识别（随 wheel 自带）。
 
+> **FFmpeg 无需手动安装**：脚本会自动下载 BtbN 的 LGPL 版 FFmpeg（首次联网，之后走
+> 本地 `.ffmpeg-cache` 缓存离线可复现），SHA256 校验 + `-buildconf` 断言后复制
+> `ffmpeg.exe` 到 worker 同级，作为 OpenCV 打不开 MKV/AVI 编解码器时的兜底解码器，
+> 并供前端「切片段」命令调用。**不要**改回「取构建机 PATH 上的 ffmpeg」——那可能取到
+> GPL 构建，会把 Apache 2.0 发行包拖进 GPL。
+
 ### 4.2 脚本替你处理的三个坑（对应战略规划书 7.3）
 
 | 坑 | 对策（脚本已内建） |
@@ -151,16 +160,18 @@ python -c "import zmq, framescout_pb2; c=zmq.Context().socket(zmq.REQ); c.connec
 | ONNX GPU Provider 动态库丢失 | `--include-data-dir=…\onnxruntime\capi=onnxruntime/capi`，把 `onnxruntime.dll` / `onnxruntime_providers_shared.dll` / `DirectML.dll` 整目录打入 |
 | 编译器冲突 | `--msvc=latest` |
 | 模型资源不随 exe 分发 | 编译后把整个 `models\`（siglip2-base + bge-m3 + ocr）复制到 exe 同级目录，并复制 `ocr_manifest.json` |
+| OpenCV 无法解码部分 MKV/AVI 编解码器 | 自动下载 BtbN LGPL 版 FFmpeg（SHA256 校验 + `-buildconf` 断言无 `--enable-gpl/nonfree`），复制 `ffmpeg.exe` 到 worker 同级作兜底解码 + 切片段 |
 
-> **ZMQ 句柄残留**是运行期问题（打包不涉及）：已要求 `server.py` 侧设 `LINGER=0`，
-> 且 Tauri 退出钩子里会 kill worker。此点与打包脚本无关，但验收时需一并确认无野进程。
+> **ZMQ 句柄残留**是运行期问题（打包不涉及）：`server.py` 侧已设 `LINGER=0`，
+> Tauri 侧各 REQ socket 也已设 `set_linger(0)`，且 Tauri 退出钩子里会 kill worker。
+> 此点与打包脚本无关，但验收时需一并确认无野进程。
 
 ### 4.3 部署到 Tauri
 
 脚本默认在编译后自动把产物复制到 `..\FrameScout-UI\src-tauri\bin\ai_worker\`。
 Tauri 侧 `worker_process.rs` 按 `bin\ai_worker\ai_worker.exe` 定位，两种模式都兼容：
-- **onefile**：`bin\ai_worker\ai_worker.exe` + `bin\ai_worker\models\`（siglip2-base + bge-m3 + ocr）+ `bin\ai_worker\ocr_manifest.json`
-- **onedir**：`bin\ai_worker\ai_worker.exe` + 依赖文件 + `models\`（siglip2-base + bge-m3 + ocr）+ `ocr_manifest.json`
+- **onefile**：`bin\ai_worker\ai_worker.exe` + `bin\ai_worker\models\`（siglip2-base + bge-m3 + ocr）+ `bin\ai_worker\ocr_manifest.json` + `bin\ai_worker\ffmpeg.exe`
+- **onedir**：`bin\ai_worker\ai_worker.exe` + 依赖文件 + `models\`（siglip2-base + bge-m3 + ocr）+ `ocr_manifest.json` + `ffmpeg.exe`
 
 随后回前端目录 `npm run tauri dev`（或 `npm run dev:pro`）启动即可。
 
@@ -219,8 +230,9 @@ Get-ChildItem "$env:VIRTUAL_ENV\Lib\site-packages\onnxruntime\capi\*.dll"
 PyInstaller 不会自动打包模型与 `transformers` 处理器，需手动放置或让代码自动下载：
 
 - `models\siglip2-base\` → 放进 `dist\ai_worker\models\siglip2-base\`
-- `models\ocr\`          → 多语言 rec 模型（ch_tra/ja 内置 + 俄/韩/德/法/西可下载）；
-  打包前先 `python scripts\download_ocr_models.py` 下载到 `models\ocr\`，再整目录搬运
+- `models\ocr\`          → 多语言 rec 模型（en/ch_sim 随 wheel 自带；ch_tra/ja 随包内置 +
+  en_opt/俄/韩/德/法/西可下载）；打包前先 `python scripts\download_ocr_models.py` 下载到
+  `models\ocr\`，再整目录搬运
 - `ocr_manifest.json`    → 放进 `dist\ai_worker\`（worker 按 exe 同级定位语言目录）
 
 （也可通过 `config.py` 的路径解析从外部指定模型目录。）

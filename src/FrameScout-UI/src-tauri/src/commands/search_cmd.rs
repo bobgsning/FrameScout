@@ -5,6 +5,10 @@ use std::time::Instant;
 use rusqlite::params;
 use tauri::State;
 use crate::constants::{BGE_DENSE_DIM, RPC_TIMEOUT_SEARCH_MS, RPC_TIMEOUT_FILE_TASK_MS, RPC_TIMEOUT_PING_MS};
+use crate::error::{
+    ec, ec1, ERR_BGE_UNAVAILABLE, ERR_DB_PREPARE_FAILED, ERR_DB_QUERY_FAILED, ERR_IMAGE_VECTOR_FAILED,
+    ERR_INDEX_EMPTY, ERR_LOCK_POISONED, STATUS_ENGINE_READY, TAG_VISUAL,
+};
 use crate::fs_trace;
 use crate::model_code::{
     AppState, OcrLineHit, PagedResponse, SearchResult, TextEntryHit, TextEntryPagedResponse,
@@ -181,7 +185,7 @@ pub(crate) fn fetch_ocr_hit_lines(
 pub async fn ping_engine() -> Result<String, String> {
     // 债单 A13：硬编码 90000 换常量 RPC_TIMEOUT_PING_MS（长超时等待模型加载）
     match request_vector(proto::encode_request::Payload::Text("PING_ENGINE".to_string()), RPC_TIMEOUT_PING_MS) {
-        Ok(_) => Ok("READY".to_string()),
+        Ok(_) => Ok(ec(STATUS_ENGINE_READY)),
         Err(e) => Err(e),
     }
 }
@@ -199,9 +203,9 @@ pub async fn search_by_image(
     file_types: Option<Vec<String>>,
 ) -> Result<PagedResponse, String> {
     {
-        let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+        let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         if memory.is_empty() {
-            return Err("Memory Matrix is empty! Please scan a folder first.".to_string());
+            return Err(ec(ERR_INDEX_EMPTY));
         }
     }
 
@@ -219,26 +223,26 @@ pub async fn search_by_image(
         RPC_TIMEOUT_FILE_TASK_MS,
     )?;
     if img_frames.is_empty() {
-        return Err("Failed to extract image vectors".to_string());
+        return Err(ec(ERR_IMAGE_VECTOR_FAILED));
     }
     let search_vec = &img_frames[0].vector;
 
-    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+    let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     if memory.is_empty() {
-        return Err("Memory Matrix is empty!".to_string());
+        return Err(ec(ERR_INDEX_EMPTY));
     }
 
     // M2''' 分区搜索（第七轮「全接」）：以图搜图也支持来源批次 / 根目录 / 时间过滤，
     // 使「基准图」条件能与时间/目录/批次条件组合，不再静默失效。
     let batch_paths: Option<std::collections::HashSet<String>> = match &batch_id {
         Some(bid) if !bid.is_empty() => {
-            let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+            let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
             let mut stmt = db
                 .prepare("SELECT DISTINCT path FROM frame_vectors WHERE indexed_in_batch_id = ?1")
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
             let paths: Vec<String> = stmt
                 .query_map(rusqlite::params![bid], |row| row.get::<_, String>(0))
-                .map_err(|e| e.to_string())?
+                .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
                 .filter_map(|r| r.ok())
                 .collect();
             drop(stmt);
@@ -305,7 +309,7 @@ pub async fn search_by_image(
                 path: meta.path.clone(),
                 timestamp: meta.timestamp,
                 score,
-                matched_tags: vec!["🖼️ Visual".to_string()],
+                matched_tags: vec![ec(TAG_VISUAL)],
                 ocr_text: meta.ocr_text.clone(),
                 user_note: meta.user_note.clone(),
                 index_time: meta.index_time,
@@ -381,10 +385,7 @@ pub async fn search_text(
     // 1. query → BGE-M3 dense（文本语义，查 OCR 文本向量）
     let query_dense = request_text_dense(text, RPC_TIMEOUT_SEARCH_MS)?;
     if query_dense.is_empty() {
-        return Err(
-            "BGE-M3 text engine not available. Run `python scripts/download_models.py --bge` first."
-                .to_string(),
-        );
+        return Err(ec(ERR_BGE_UNAVAILABLE));
     }
 
     // 2. 从 SQLite 读 media_text_vectors 的 dense_blob，暴力余弦。
@@ -407,7 +408,7 @@ pub async fn search_text(
              WHERE mtv.model = ?1
                  AND (f.is_dead IS NULL OR f.is_dead = 0)",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let mut hits: Vec<TextSearchHit> = Vec::new();
     let rows = stmt
@@ -420,7 +421,7 @@ pub async fn search_text(
             let index_time: f64 = row.get(5).unwrap_or(0.0);
             Ok((path, ts_ms, blob, ocr_text, user_note, index_time))
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?;
 
     for row in rows {
         let Ok((path, ts_ms, blob, ocr_text, user_note, index_time)) = row else {
@@ -488,10 +489,7 @@ pub async fn insert_text_entry(
     // 1. worker 编码纯文本 → (entry_id, dense)
     let (entry_id, dense) = request_text_entry(text.clone(), source_uri.clone())?;
     if dense.is_empty() {
-        return Err(
-            "BGE-M3 text engine not available. Run `python scripts/download_models.py --bge` first."
-                .to_string(),
-        );
+        return Err(ec(ERR_BGE_UNAVAILABLE));
     }
     // 2. 落 text_entries（唯一写入口）
     let db = state.db_conn.lock().unwrap();
@@ -513,10 +511,7 @@ pub async fn search_text_entries(
     // 1. query → BGE-M3 dense
     let query_dense = request_text_dense(text, RPC_TIMEOUT_SEARCH_MS)?;
     if query_dense.is_empty() {
-        return Err(
-            "BGE-M3 text engine not available. Run `python scripts/download_models.py --bge` first."
-                .to_string(),
-        );
+        return Err(ec(ERR_BGE_UNAVAILABLE));
     }
 
     // 2. 读 text_entries 的 dense_blob，暴力余弦
@@ -526,7 +521,7 @@ pub async fn search_text_entries(
             "SELECT entry_id, source_uri, content, dense_blob, index_time
              FROM text_entries WHERE model = ?1",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let mut hits: Vec<TextEntryHit> = Vec::new();
     let rows = stmt
@@ -538,7 +533,7 @@ pub async fn search_text_entries(
             let index_time: f64 = row.get(4).unwrap_or(0.0);
             Ok((entry_id, source_uri, content, blob, index_time))
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?;
 
     for row in rows {
         let Ok((entry_id, source_uri, content, blob, index_time)) = row else {

@@ -5,6 +5,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use crate::error::{ec, ec1, ERR_EXPORT_DIR_CREATE_FAILED, ERR_EXPORT_DIR_EMPTY, ERR_EXPORT_WRITE_FAILED};
 use crate::fs_trace;
 
 /// 把文本内容写到 `dir/filename`，返回完整路径。
@@ -18,12 +19,12 @@ pub async fn export_file(
 ) -> Result<String, String> {
     let trimmed = dir.trim();
     if trimmed.is_empty() {
-        return Err("Export directory is empty".to_string());
+        return Err(ec(ERR_EXPORT_DIR_EMPTY));
     }
 
     let dir_path = PathBuf::from(trimmed);
     fs::create_dir_all(&dir_path)
-        .map_err(|e| format!("Failed to create export directory: {}", e))?;
+        .map_err(|e| ec1(ERR_EXPORT_DIR_CREATE_FAILED, e))?;
 
     // 清理文件名里的路径分隔符与 Windows 非法字符
     let safe_name: String = filename
@@ -35,7 +36,7 @@ pub async fn export_file(
         .collect();
 
     let file_path = dir_path.join(&safe_name);
-    fs::write(&file_path, content).map_err(|e| format!("Failed to write file: {}", e))?;
+    fs::write(&file_path, content).map_err(|e| ec1(ERR_EXPORT_WRITE_FAILED, e))?;
 
     let full = file_path.to_string_lossy().to_string();
     fs_trace!("exported: {}", full);

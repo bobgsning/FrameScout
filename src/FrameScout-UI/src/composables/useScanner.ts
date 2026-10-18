@@ -20,6 +20,7 @@ import { useClustering } from './useClustering'
 import { useToast } from './useToast'
 import { usePreferences } from './usePreferences'
 import { t } from '@/i18n'
+import { localizeBackend } from '@/utils/backendText'
 
 // ---------- 模块级共享状态 ----------
 // P1-5 / 债单 A7：folderPath / scanMode / ocrLanguages 改从 usePreferences 取，
@@ -481,8 +482,10 @@ export function useScanner() {
     onMounted(async () => {
       unlistenScanProgress = await listen<ScanProgressPayload>('scan-progress', (e) => {
         const payload = e.payload
-        currentStatus.value = payload.status
-        currentFile.value = payload.file_path
+        // 后端只回状态码；file_path 有时是真实路径、有时是状态补充说明，
+        // localizeBackend 对非码内容原样返回，故可直接套用。
+        currentStatus.value = localizeBackend(payload.status)
+        currentFile.value = localizeBackend(payload.file_path)
         scanProgress.value = { current: payload.current, total: payload.total }
 
         if (payload.new_files && payload.new_files.length > 0) {

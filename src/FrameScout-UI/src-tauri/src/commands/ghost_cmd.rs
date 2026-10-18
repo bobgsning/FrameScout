@@ -16,6 +16,11 @@ use rusqlite::params;
 use serde_json::json;
 use tauri::State;
 
+use crate::error::{
+    ec, ec1, ERR_DB_EXEC_FAILED, ERR_DB_PREPARE_FAILED, ERR_DB_QUERY_FAILED,
+    ERR_DB_TX_BEGIN_FAILED, ERR_DB_TX_COMMIT_FAILED, ERR_GHOST_UNKNOWN_ACTION, ERR_LOCK_POISONED,
+    ERR_NO_PATHS_SELECTED,
+};
 use crate::fs_trace;
 use crate::model_code::{AppState, GhostActionResult, GhostItem};
 use crate::storage::db::load_frame_rows;
@@ -101,7 +106,7 @@ fn extract_root(path: &str) -> String {
 /// 只呈现「上次扫描后没再见过」的文件，刚扫到的文件不会进幽灵清单。
 #[tauri::command]
 pub async fn preview_ghosts(state: State<'_, AppState>) -> Result<Vec<GhostItem>, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     // 取最近一次合法完成的扫描批次的 started_at（journal.rs:111 注释承诺的过滤条件）。
     // 没有最近批次时传空串，SQL 的 `?1 = ''` 短路为真，等价于不过滤（兼容首次使用）。
@@ -130,7 +135,7 @@ pub async fn preview_ghosts(state: State<'_, AppState>) -> Result<Vec<GhostItem>
                     AND (?1 = '' OR f.last_seen_at IS NULL OR f.last_seen_at < ?1))
              ORDER BY f.last_seen_at DESC",
         )
-        .map_err(|e| format!("Prepare error: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let raw_items: Vec<GhostItem> = stmt
         .query_map(params![recent_scan_started_at], |row| {
@@ -148,7 +153,7 @@ pub async fn preview_ghosts(state: State<'_, AppState>) -> Result<Vec<GhostItem>
                 disk_offline: false,
             })
         })
-        .map_err(|e| format!("Query error: {}", e))?
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
         .filter_map(Result::ok)
         .collect();
     drop(stmt);
@@ -221,15 +226,15 @@ pub async fn apply_ghost_action(
     action: String,
 ) -> Result<GhostActionResult, String> {
     let action = GhostAction::from_str(&action)
-        .ok_or_else(|| format!("Unknown ghost action: {}", action))?;
+        .ok_or_else(|| ec1(ERR_GHOST_UNKNOWN_ACTION, action))?;
 
     if paths.is_empty() {
-        return Err("No paths selected".to_string());
+        return Err(ec(ERR_NO_PATHS_SELECTED));
     }
 
     // 声明为 mut：purge 级联删除需要开事务（db.transaction() 要求 &mut self）。
-    let mut db = state.db_conn.lock().map_err(|e| e.to_string())?;
-    let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
+    let mut db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
+    let mut memory = state.memory_db.write().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     // 开一个 clean_ghosts 批次骨架：这次批量操作动了什么，事后一查便知。
     let batch_id = journal::begin_batch(&db, BatchType::CleanGhosts, None)
@@ -282,7 +287,7 @@ pub async fn apply_ghost_action(
                     "UPDATE files SET is_dead = 1, dead_at = ?1 WHERE path = ?2",
                     params![utc_now_iso(), path],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
                 let _ = journal::record_event(&db, &batch_id, path, EventType::Dead, None);
             }
             GhostAction::Restore => {
@@ -294,7 +299,7 @@ pub async fn apply_ghost_action(
                     "UPDATE files SET is_dead = 0, dead_at = NULL WHERE path = ?1",
                     params![path],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
                 let _ = journal::record_event(&db, &batch_id, path, EventType::Revived, None);
             }
             GhostAction::Purge => {
@@ -303,22 +308,22 @@ pub async fn apply_ghost_action(
                 // media_text_vectors / reindex_backup 三张表的孤儿行，
                 // 配合 search_text 不过滤 is_dead ⇒ 真删除后仍能被文本搜出来。
                 // 这是品牌级失信（"100% 本地、数据主权" + "删不掉"）。
-                let tx = db.transaction().map_err(|e| e.to_string())?;
+                let tx = db.transaction().map_err(|e| ec1(ERR_DB_TX_BEGIN_FAILED, e))?;
                 tx.execute("DELETE FROM frame_vectors WHERE path = ?1", params![path])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
                 tx.execute("DELETE FROM media_ocr_entries WHERE path = ?1", params![path])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
                 tx.execute("DELETE FROM media_text_vectors WHERE path = ?1", params![path])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
                 // 债单 B15：补删 text_entries 中以该路径为 source_uri 的文本块，
                 // 否则 purge 后这些块仍可被 search_text_entries 召回（同类于第三轮 D4，换张表）。
                 tx.execute("DELETE FROM text_entries WHERE source_uri = ?1", params![path])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
                 tx.execute("DELETE FROM reindex_backup WHERE path = ?1", params![path])
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
                 tx.execute("DELETE FROM files WHERE path = ?1", params![path])
-                    .map_err(|e| e.to_string())?;
-                tx.commit().map_err(|e| e.to_string())?;
+                    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
+                tx.commit().map_err(|e| ec1(ERR_DB_TX_COMMIT_FAILED, e))?;
                 let _ = journal::record_event(
                     &db,
                     &batch_id,

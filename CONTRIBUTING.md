@@ -32,12 +32,14 @@ Even rough ideas are welcome. We'll figure out the details together.
 3. Make your changes
 4. Test them manually (automated tests are planned but not yet available)
 5. If you modified `src/proto/framescout.proto`, regenerate the Python bindings
-   (Rust bindings are generated automatically by `build.rs`):
-
-> **Prerequisite**: Install the Protocol Buffers compiler (`protoc`) from [https://github.com/protocolbuffers/protobuf/releases](https://github.com/protocolbuffers/protobuf/releases) and ensure it's in your PATH.
-> A bundled copy also lives at `src/proto/protoc.exe` (offline builds).
+   (Rust bindings are generated automatically by `build.rs`). Use the bundled
+   `protoc` (offline, no install needed) from the **repository root**:
 
    ```bash
+   # Windows (bundled protoc)
+   src\proto\protoc.exe --proto_path=src/proto --python_out=src/inference-worker --pyi_out=src/inference-worker src/proto/framescout.proto
+
+   # macOS / Linux (system protoc, https://github.com/protocolbuffers/protobuf/releases)
    protoc -I=./src/proto --python_out=./src/inference-worker --pyi_out=./src/inference-worker ./src/proto/framescout.proto
    ```
 
@@ -46,7 +48,40 @@ Even rough ideas are welcome. We'll figure out the details together.
 6. Push and open a Pull Request
 
 Don't worry too much about commit message conventions. Just write something clear. If AI tools helped you, feel free to mention it in the PR description — but it's not required.
-If you’d like, consider using [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (e.g., feat:, fix:, docs:). It helps generate changelogs automatically.
+If you'd like, consider using [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (e.g., feat:, fix:, docs:). It helps generate changelogs automatically.
+
+### Development Setup
+
+Full quick-start with commands: [README.md → Quick Start (Development)](README.md#-quick-start-development).
+Packaging the Python worker: [src/inference-worker/BUILD.md](src/inference-worker/BUILD.md).
+
+1. **Prerequisites**: Rust (2021 edition), Node.js 18+, Python 3.10+
+2. **Frontend**: `cd src/FrameScout-UI && npm install`
+3. **Python worker**: create `.venv` in `src/inference-worker` and install dependencies —
+   ⚠️ install `onnxruntime-directml` **first**, then `rapidocr_onnxruntime` with `--no-deps`
+   (the install-order trap is documented in BUILD.md §1.2; the wrong order silently
+   degrades OCR to CPU)
+4. **Models**: `python scripts/download_models.py` (needs a torch + transformers export
+   environment; the runtime venv intentionally excludes torch)
+5. **Run**: `cd src/FrameScout-UI && npm run tauri dev` (`npm run dev:pro` for the Pro feature)
+
+### Localization (i18n)
+
+The UI ships with **9 languages** (en, zh-CN, zh-TW, ja, ru, ko, de, fr, es), English by
+default. Locale files live in `src/FrameScout-UI/src/i18n/locales/*.json`.
+
+- **Backend messages** never contain English sentences: the Rust core returns stable
+  error codes (`CODE` or `CODE|param…`, registered in `src-tauri/src/error.rs`), and the
+  frontend renders them through each locale's `backend.*` block. When you add a new code,
+  add its text to **all 9** locale files.
+- **Validate before committing**: `node scripts/check_i18n_backend.mjs` — checks key-set
+  parity across the 9 locales, duplicate root keys, and `{0}/{1}/{detail}` placeholder
+  alignment.
+- **Adding a UI language**: add a locale JSON + register it in `src/i18n/index.ts`
+  (`SUPPORTED_LOCALES`).
+- **Adding an OCR language**: see
+  [src/inference-worker/OCR_MULTILANG.md → Adding a new language](src/inference-worker/OCR_MULTILANG.md#adding-a-new-language)
+  (language metadata lives in `ocr_manifest.json`, the single source of truth).
 
 ## Code Style
 

@@ -18,6 +18,9 @@ use tauri::State;
 use walkdir::WalkDir;
 
 use crate::constants::{IMAGE_EXTENSIONS, VIDEO_EXTENSIONS};
+use crate::error::{
+    ec, ec1, ERR_DB_PREPARE_FAILED, ERR_DB_QUERY_FAILED, ERR_DIFF_NO_FOLDER, ERR_LOCK_POISONED,
+};
 use crate::fs_trace;
 use crate::model_code::{AppState, DiffItem, DiffKind, DiffReport};
 use crate::storage::journal::{self, BatchType, FileStat};
@@ -36,10 +39,10 @@ pub async fn scan_diff(
     folder_path: String,
 ) -> Result<DiffReport, String> {
     if folder_path.trim().is_empty() {
-        return Err("Pick a folder to review first.".to_string());
+        return Err(ec(ERR_DIFF_NO_FOLDER));
     }
 
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     let baseline_batch_id = journal::latest_completed_batch(&db, BatchType::Scan);
 
@@ -86,7 +89,7 @@ pub async fn scan_diff(
                         (SELECT COUNT(*) FROM frame_vectors fv WHERE fv.path = f.path) AS frame_count
                  FROM files f",
             )
-            .map_err(|e| format!("Prepare error: {}", e))?;
+            .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((
@@ -98,7 +101,7 @@ pub async fn scan_diff(
                     row.get::<_, i64>(5)? as usize,
                 ))
             })
-            .map_err(|e| format!("Query error: {}", e))?;
+            .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?;
 
         for row in rows.flatten() {
             let (path, mtime, size, is_dead, last_seen_at, frame_count) = row;

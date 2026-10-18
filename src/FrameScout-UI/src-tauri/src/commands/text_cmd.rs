@@ -12,6 +12,12 @@ use tauri::State;
 use walkdir::WalkDir;
 
 use crate::constants::{TEXT_CHUNK_CHARS, TEXT_CHUNK_OVERLAP, TEXT_EXTENSIONS};
+use crate::error::{
+    ec, ec1, ec2, ERR_BGE_UNAVAILABLE, ERR_DB_TX_BEGIN_FAILED, ERR_DB_TX_COMMIT_FAILED,
+    ERR_LOCK_POISONED, ERR_TEXT_DELETE_OLD_CHUNKS, ERR_TEXT_EMPTY_FILE, ERR_TEXT_EXT_UNSUPPORTED,
+    ERR_TEXT_FORMAT_UNSUPPORTED, ERR_TEXT_NO_CHUNKS, ERR_TEXT_PARTIAL_FAILURE,
+    ERR_TEXT_PATH_NOT_EXIST, ERR_TEXT_READ_FAILED,
+};
 use crate::fs_trace;
 use crate::model_code::{
     AppState, TextEntryListResponse, TextIngestFailure, TextIngestPreview, TextIngestResult,
@@ -191,16 +197,16 @@ fn expand_targets(paths: &[String]) -> (Vec<String>, Vec<TextIngestFailure>) {
                 // 债单 B6/C4：pdf/docx 是二进制格式，按 UTF-8 读会灌乱码。撤回扩展名后，
                 // 明确拒收并给出可行动的指引，而非静默污染索引。
                 let msg = if ext == "pdf" || ext == "docx" {
-                    format!("Format {} is not supported yet; convert it to txt/md before importing", ext.to_uppercase())
+                    ec1(ERR_TEXT_FORMAT_UNSUPPORTED, ext.to_uppercase())
                 } else {
-                    format!("Unsupported extension: .{}", ext)
+                    ec1(ERR_TEXT_EXT_UNSUPPORTED, ext)
                 };
                 failed.push(TextIngestFailure { path, error: msg });
             }
         } else {
             failed.push(TextIngestFailure {
                 path,
-                error: "Path does not exist".to_string(),
+                error: ec(ERR_TEXT_PATH_NOT_EXIST),
             });
         }
     }
@@ -217,7 +223,7 @@ pub async fn preview_text_ingest(
     paths: Vec<String>,
 ) -> Result<TextIngestPreview, String> {
     let (targets, _failed) = expand_targets(&paths);
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     let mut will_replace_chunks = 0usize;
     let mut affected_files = 0usize;
     for path in &targets {
@@ -258,7 +264,7 @@ pub async fn ingest_text_files(
             Err(e) => {
                 failed.push(TextIngestFailure {
                     path: path.clone(),
-                    error: format!("Read failed: {}", e),
+                    error: ec1(ERR_TEXT_READ_FAILED, e),
                 });
                 continue;
             }
@@ -266,7 +272,7 @@ pub async fn ingest_text_files(
         if content.trim().is_empty() {
             failed.push(TextIngestFailure {
                 path: path.clone(),
-                error: "Empty file".to_string(),
+                error: ec(ERR_TEXT_EMPTY_FILE),
             });
             continue;
         }
@@ -282,7 +288,7 @@ pub async fn ingest_text_files(
         if chunks.is_empty() {
             failed.push(TextIngestFailure {
                 path: path.clone(),
-                error: "No text after chunking".to_string(),
+                error: ec(ERR_TEXT_NO_CHUNKS),
             });
             continue;
         }
@@ -295,9 +301,7 @@ pub async fn ingest_text_files(
             match request_text_entry(chunk.clone(), path.clone()) {
                 Ok((_worker_id, dense)) if !dense.is_empty() => encoded.push((idx, chunk.clone(), dense)),
                 Ok(_) => {
-                    err = Some(
-                        "BGE-M3 text engine not available (run download_models.py --bge first)".to_string(),
-                    );
+                    err = Some(ec(ERR_BGE_UNAVAILABLE));
                     break;
                 }
                 Err(e) => {
@@ -321,7 +325,7 @@ pub async fn ingest_text_files(
                     match text_store::delete_text_entries_by_source(&tx, path) {
                         Err(e) => {
                             let _ = tx.rollback();
-                            err = Some(format!("Failed to delete old chunks: {}", e));
+                            err = Some(ec1(ERR_TEXT_DELETE_OLD_CHUNKS, e));
                         }
                         Ok(removed) => {
                             deleted_old_chunks += removed;
@@ -349,7 +353,7 @@ pub async fn ingest_text_files(
                                 }
                                 None => {
                                     if let Err(e) = tx.commit() {
-                                        err = Some(format!("Commit failed: {}", e));
+                                        err = Some(ec1(ERR_DB_TX_COMMIT_FAILED, e));
                                     }
                                 }
                             }
@@ -357,7 +361,7 @@ pub async fn ingest_text_files(
                     }
                 }
                 Err(e) => {
-                    err = Some(format!("Failed to begin transaction: {}", e));
+                    err = Some(ec1(ERR_DB_TX_BEGIN_FAILED, e));
                 }
             };
         }
@@ -371,7 +375,7 @@ pub async fn ingest_text_files(
                     chunks_total += encoded.len();
                     failed.push(TextIngestFailure {
                         path: path.clone(),
-                        error: format!("Partial failure ({} chunks indexed): {}", encoded.len(), e),
+                        error: ec2(ERR_TEXT_PARTIAL_FAILURE, encoded.len(), e),
                     });
                 } else {
                     failed.push(TextIngestFailure {

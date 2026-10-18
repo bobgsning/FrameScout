@@ -4,6 +4,7 @@ import type { SearchResult } from '@/types/search'
 import { getAssetUrl } from '@/utils/media'
 import { formatScore, getNumericScore, formatSearchScore, getSearchNumericScore, SEMANTIC_BADGE_THRESHOLD } from '@/utils/score'
 import { highlight } from '@/utils/highlight'
+import { localizeBackend } from '@/utils/backendText'
 import OcrPanel from './OcrPanel.vue'
 import NotePanel from './NotePanel.vue'
 import ScoreBar from './ScoreBar.vue'
@@ -36,7 +37,9 @@ const highlightedPath = computed(() =>
   highlight(props.item.path, props.searchQuery, props.isImageSearch)
 )
 const visibleTags = computed(() =>
-  (props.item.matched_tags || []).filter((t) => !t.includes('Semantic'))
+  (props.item.matched_tags || [])
+    .filter((t) => !t.includes('Semantic'))
+    .map((tag) => localizeBackend(tag))
 )
 </script>
 

@@ -2,6 +2,7 @@
 
 use prost::Message;
 use crate::constants::RPC_TIMEOUT_SEARCH_MS;
+use crate::error::{ec, ec1, ERR_WORKER_FAILED, ERR_WORKER_NO_TEXT_ENTRY, ERR_WORKER_UNKNOWN_RESPONSE};
 use crate::model_code::{EncodedFrame, OcrLine};
 use crate::proto::framescout as proto;
 
@@ -29,18 +30,20 @@ pub fn request_vector(
     timeout_ms: i32,
 ) -> Result<Vec<EncodedFrame>, String> {
     let context = zmq::Context::new();
-    let socket = context.socket(zmq::REQ).map_err(|e| e.to_string())?;
-    socket.set_rcvtimeo(timeout_ms).map_err(|e| e.to_string())?;
-    socket.connect("tcp://127.0.0.1:16666").map_err(|e| e.to_string())?;
+    let socket = context.socket(zmq::REQ).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    socket.set_rcvtimeo(timeout_ms).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    // P3：linger=0，socket 关闭时立即丢弃待发消息，避免残留 ZMQ 句柄。
+    socket.set_linger(0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    socket.connect("tcp://127.0.0.1:16666").map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
 
     let req = build_request(payload);
     let mut buf = Vec::new();
     req.encode(&mut buf).unwrap();
 
-    socket.send(buf, 0).map_err(|e| e.to_string())?;
-    let reply_raw = socket.recv_bytes(0).map_err(|e| e.to_string())?;
+    socket.send(buf, 0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    let reply_raw = socket.recv_bytes(0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
 
-    let res = proto::EncodeResponse::decode(&reply_raw[..]).map_err(|e| e.to_string())?;
+    let res = proto::EncodeResponse::decode(&reply_raw[..]).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
     match res.result {
         Some(proto::encode_response::Result::Success(s)) => Ok(s
             .frames
@@ -66,8 +69,8 @@ pub fn request_vector(
                 dense_vector: f.dense_vector,
             })
             .collect()),
-        Some(proto::encode_response::Result::Error(e)) => Err(e.message),
-        None => Err("Unknown response".to_string()),
+        Some(proto::encode_response::Result::Error(e)) => Err(ec1(ERR_WORKER_FAILED, e.message)),
+        None => Err(ec(ERR_WORKER_UNKNOWN_RESPONSE)),
     }
 }
 
@@ -78,9 +81,10 @@ pub fn request_vector(
 /// 返回 `frames[0].dense_vector`；文本引擎不可用（worker 未加载 BGE 模型）时为空。
 pub fn request_text_dense(text: String, timeout_ms: i32) -> Result<Vec<f32>, String> {
     let context = zmq::Context::new();
-    let socket = context.socket(zmq::REQ).map_err(|e| e.to_string())?;
-    socket.set_rcvtimeo(timeout_ms).map_err(|e| e.to_string())?;
-    socket.connect("tcp://127.0.0.1:16666").map_err(|e| e.to_string())?;
+    let socket = context.socket(zmq::REQ).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    socket.set_rcvtimeo(timeout_ms).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    socket.set_linger(0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    socket.connect("tcp://127.0.0.1:16666").map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
 
     let req = proto::EncodeRequest {
         model: proto::EmbeddingModel::BgeM3Dense as i32,
@@ -88,10 +92,10 @@ pub fn request_text_dense(text: String, timeout_ms: i32) -> Result<Vec<f32>, Str
     };
     let mut buf = Vec::new();
     req.encode(&mut buf).unwrap();
-    socket.send(buf, 0).map_err(|e| e.to_string())?;
-    let reply_raw = socket.recv_bytes(0).map_err(|e| e.to_string())?;
+    socket.send(buf, 0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    let reply_raw = socket.recv_bytes(0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
 
-    let res = proto::EncodeResponse::decode(&reply_raw[..]).map_err(|e| e.to_string())?;
+    let res = proto::EncodeResponse::decode(&reply_raw[..]).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
     match res.result {
         Some(proto::encode_response::Result::Success(s)) => Ok(s
             .frames
@@ -99,8 +103,8 @@ pub fn request_text_dense(text: String, timeout_ms: i32) -> Result<Vec<f32>, Str
             .next()
             .map(|f| f.dense_vector)
             .unwrap_or_default()),
-        Some(proto::encode_response::Result::Error(e)) => Err(e.message),
-        None => Err("Unknown response".to_string()),
+        Some(proto::encode_response::Result::Error(e)) => Err(ec1(ERR_WORKER_FAILED, e.message)),
+        None => Err(ec(ERR_WORKER_UNKNOWN_RESPONSE)),
     }
 }
 
@@ -108,11 +112,12 @@ pub fn request_text_dense(text: String, timeout_ms: i32) -> Result<Vec<f32>, Str
 /// 文本通道的「写入侧」——与视觉索引是两条公路（这里显式 `model=BGE_M3_DENSE`）。
 pub fn request_text_entry(text: String, source_uri: String) -> Result<(String, Vec<f32>), String> {
     let context = zmq::Context::new();
-    let socket = context.socket(zmq::REQ).map_err(|e| e.to_string())?;
+    let socket = context.socket(zmq::REQ).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
     // 债单 A13/C7：rcvtimeo -1（无限等待）换 RPC_TIMEOUT_SEARCH_MS——纯文本入库
     // 卡住时快速失败，而非 UI 永久转圈只能杀进程。
-    socket.set_rcvtimeo(RPC_TIMEOUT_SEARCH_MS).map_err(|e| e.to_string())?;
-    socket.connect("tcp://127.0.0.1:16666").map_err(|e| e.to_string())?;
+    socket.set_rcvtimeo(RPC_TIMEOUT_SEARCH_MS).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    socket.set_linger(0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    socket.connect("tcp://127.0.0.1:16666").map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
 
     let task = proto::TextTask {
         text,
@@ -125,19 +130,19 @@ pub fn request_text_entry(text: String, source_uri: String) -> Result<(String, V
     };
     let mut buf = Vec::new();
     req.encode(&mut buf).unwrap();
-    socket.send(buf, 0).map_err(|e| e.to_string())?;
-    let reply_raw = socket.recv_bytes(0).map_err(|e| e.to_string())?;
+    socket.send(buf, 0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
+    let reply_raw = socket.recv_bytes(0).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
 
-    let res = proto::EncodeResponse::decode(&reply_raw[..]).map_err(|e| e.to_string())?;
+    let res = proto::EncodeResponse::decode(&reply_raw[..]).map_err(|e| ec1(ERR_WORKER_FAILED, e))?;
     match res.result {
         Some(proto::encode_response::Result::Success(s)) => match s.text_entries.into_iter().next() {
             Some(e) => Ok((
                 e.entry_id,
                 e.embedding.map(|emb| emb.dense).unwrap_or_default(),
             )),
-            None => Err("worker returned no text entry".to_string()),
+            None => Err(ec(ERR_WORKER_NO_TEXT_ENTRY)),
         },
-        Some(proto::encode_response::Result::Error(e)) => Err(e.message),
-        None => Err("Unknown response".to_string()),
+        Some(proto::encode_response::Result::Error(e)) => Err(ec1(ERR_WORKER_FAILED, e.message)),
+        None => Err(ec(ERR_WORKER_UNKNOWN_RESPONSE)),
     }
 }

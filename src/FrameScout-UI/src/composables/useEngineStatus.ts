@@ -5,6 +5,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { t } from '@/i18n'
+import { localizeBackend } from '@/utils/backendText'
 import type { EngineStatusPayload, EngineStatusValue } from '@/types/license'
 import { useSmartFolders } from './useSmartFolders'
 
@@ -46,11 +47,11 @@ export function useEngineStatus() {
             engineStatus.value = 'connecting'
             engineRetry.value = payload.retry ?? 0
             engineMaxRetries.value = payload.max_retries ?? 30
-            engineMessage.value = payload.message
+            engineMessage.value = localizeBackend(payload.message)
             break
           case 'error':
             engineStatus.value = 'error'
-            engineMessage.value = payload.message
+            engineMessage.value = localizeBackend(payload.message)
             break
         }
       })

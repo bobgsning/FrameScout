@@ -2,6 +2,10 @@
 
 use rusqlite::params;
 use tauri::State;
+use crate::error::{
+    ec, ec1, ec2, ERR_DB_COUNT_FAILED, ERR_DB_EXEC_FAILED, ERR_DB_PREPARE_FAILED, ERR_DB_QUERY_FAILED,
+    ERR_LOCK_POISONED, ERR_NOTE_NO_RECORD, TAG_ALL_FILES,
+};
 use crate::model_code::{AppState, PagedResponse, SearchResult};
 use crate::storage::{normalize_path, path_key};
 
@@ -34,17 +38,17 @@ pub async fn update_note(
             "UPDATE frame_vectors SET user_note = ?1 WHERE path = ?2 AND timestamp = ?3",
             params![note.clone(), normalized.clone(), ts],
         )
-        .map_err(|e| e.to_string())?
+        .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?
     } else {
         db.execute(
             "UPDATE frame_vectors SET user_note = ?1 WHERE path = ?2",
             params![note.clone(), normalized.clone()],
         )
-        .map_err(|e| e.to_string())?
+        .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?
     };
 
     // 同步内存矩阵（债单 B14：用 path_key 比较，而非精确 path）
-    let mut memory = state.memory_db.write().map_err(|e| e.to_string())?;
+    let mut memory = state.memory_db.write().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     let key = path_key(&normalized);
     for meta in memory.metadata.iter_mut() {
         if path_key(&meta.path) == key {
@@ -61,7 +65,11 @@ pub async fn update_note(
 
     if affected == 0 {
         // P1-15：旧实现 UPDATE 命中 0 行也返回 Ok，用户以为成功了
-        return Err(format!("No matching record found (path={}, ts={:?}); note not saved", normalized, timestamp));
+        return Err(ec2(
+            ERR_NOTE_NO_RECORD,
+            &normalized,
+            format!("{:?}", timestamp),
+        ));
     }
     Ok(())
 }
@@ -72,12 +80,12 @@ pub fn list_all_files(
     page: u32,
     limit: u32,
 ) -> Result<PagedResponse, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     let offset = (page.saturating_sub(1)) * limit;
 
     let total_count: i64 = db
         .query_row("SELECT COUNT(*) FROM frame_vectors", [], |row| row.get(0))
-        .map_err(|e| format!("DB count error: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_COUNT_FAILED, e))?;
     let total_count = total_count as usize;
 
     let mut stmt = db
@@ -87,7 +95,7 @@ pub fn list_all_files(
              ORDER BY index_time DESC
              LIMIT ?1 OFFSET ?2",
         )
-        .map_err(|e| format!("Prepare error: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let items = stmt
         .query_map(params![limit, offset], |row| {
@@ -100,7 +108,7 @@ pub fn list_all_files(
                 path,
                 timestamp: timestamp as f32,
                 score: 2.0,
-                matched_tags: vec!["📂 All Files".to_string()],
+                matched_tags: vec![ec(TAG_ALL_FILES)],
                 ocr_text,
                 user_note,
                 index_time,
@@ -113,7 +121,7 @@ pub fn list_all_files(
                 filename_hit: false,
             })
         })
-        .map_err(|e| format!("Query error: {}", e))?
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -122,14 +130,14 @@ pub fn list_all_files(
 
 #[tauri::command]
 pub fn get_all_files(state: State<'_, AppState>) -> Result<Vec<SearchResult>, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     let mut stmt = db
         .prepare(
             "SELECT path, timestamp, ocr_text, user_note, index_time
              FROM frame_vectors
              ORDER BY index_time DESC",
         )
-        .map_err(|e| format!("Prepare error: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let items = stmt
         .query_map([], |row| {
@@ -142,7 +150,7 @@ pub fn get_all_files(state: State<'_, AppState>) -> Result<Vec<SearchResult>, St
                 path,
                 timestamp: timestamp as f32,
                 score: 2.0,
-                matched_tags: vec!["📂 All Files".to_string()],
+                matched_tags: vec![ec(TAG_ALL_FILES)],
                 ocr_text,
                 user_note,
                 index_time,
@@ -155,7 +163,7 @@ pub fn get_all_files(state: State<'_, AppState>) -> Result<Vec<SearchResult>, St
                 filename_hit: false,
             })
         })
-        .map_err(|e| format!("Query error: {}", e))?
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
         .filter_map(|r| r.ok())
         .collect();
 

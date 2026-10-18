@@ -15,6 +15,7 @@ import type { SearchResult } from '@/types/search'
 import { getAssetUrl, isVideo } from '@/utils/media'
 import { useFileActions } from '@/composables/useFileActions'
 import { useToast } from '@/composables/useToast'
+import { useClip } from '@/composables/useClip'
 
 const props = defineProps<{
   visible: boolean
@@ -32,6 +33,7 @@ const emit = defineEmits<{
 
 const { openFile, revealInExplorer, copyPath } = useFileActions()
 const { push } = useToast()
+const { requestClip } = useClip()
 const { t } = useI18n()
 
 const zoom = ref(1)
@@ -137,6 +139,11 @@ async function onReveal() {
   await revealInExplorer(currentItem.value.path)
 }
 
+function onClip() {
+  if (!currentItem.value) return
+  requestClip(currentItem.value)
+}
+
 // OCR 命中行（P1-2 红框）
 const ocrLines = computed(() => currentItem.value?.ocr_lines ?? [])
 const hasOcrHits = computed(() => ocrLines.value.length > 0)
@@ -159,6 +166,7 @@ const hasOcrHits = computed(() => ocrLines.value.length > 0)
           <button class="lb-btn" :title="$t('lightbox.openFile')" @click="onOpen">📂</button>
           <button class="lb-btn" :title="$t('lightbox.reveal')" @click="onReveal">🗂️</button>
           <button class="lb-btn" :title="$t('lightbox.copyPath')" @click="onCopyPath">📋</button>
+          <button v-if="isCurrentVideo" class="lb-btn" :title="$t('clip.button')" @click="onClip">✂️</button>
           <span class="lb-divider" />
           <button class="lb-btn" :title="$t('lightbox.prev')" @click="emit('prev')">←</button>
           <button class="lb-btn" :title="$t('lightbox.next')" @click="emit('next')">→</button>

@@ -11,7 +11,7 @@ const emit = defineEmits<{
 }>()
 
 // 表单字段由 useLicense 单例持有（App.vue 已初始化，此处只取引用）
-const { licenseEmail, licenseKeyInput, activateMsg, activateSuccess, submitActivation } =
+const { licenseEmail, licenseKeyInput, activateMsg, activateSuccess, submitActivation, formatExpiry } =
   useLicense()
 
 // submitActivation 内部已 checkLicense + setTimeout 关闭弹窗，无需再额外触发
@@ -33,6 +33,14 @@ async function handleSubmit() {
         {{ props.licenseStatus.is_pro ? $t('header.licenseTitlePro') : $t('header.activatePro') }}
       </h2>
       <p class="modal-sub">{{ $t('header.activateHint') }}</p>
+
+      <!-- 已激活：显示到期日，让用户一眼知道授权还有多久 -->
+      <p
+        v-if="props.licenseStatus.is_pro && props.licenseStatus.expiry != null"
+        class="valid-until"
+      >
+        {{ $t('license.validUntil', { date: formatExpiry(props.licenseStatus.expiry) }) }}
+      </p>
 
       <div class="form-group">
         <label>{{ $t('header.email') }}</label>
@@ -111,6 +119,14 @@ async function handleSubmit() {
   text-align: center;
   margin: 0 0 24px 0;
   line-height: 1.4;
+}
+
+.valid-until {
+  font-size: 13px;
+  color: #6ee7a0;
+  text-align: center;
+  margin: -14px 0 18px 0;
+  font-weight: 600;
 }
 
 .form-group {

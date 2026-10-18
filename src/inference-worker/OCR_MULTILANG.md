@@ -2,7 +2,7 @@
 
 This document explains how text recognition works in the FrameScout inference worker, how multi-language recognition is implemented, and how to add a new language.
 
-> **Current state**: FrameScout OCR ships with **4 built-in languages** (English, 简体中文, 繁體中文, 日本語) and supports **5 downloadable languages** (Русский, 한국어, Deutsch, Français, Español), with 6 more planned. All language metadata lives in a single source of truth — `ocr_manifest.json`.
+> **Current state**: FrameScout OCR ships with **4 built-in languages** (English, 简体中文, 繁體中文, 日本語) and supports **6 downloadable recognition models** (Русский, 한국어, Deutsch, Français, Español, plus an English-optimized variant `en_opt`), with 6 more planned. All language metadata lives in a single source of truth — `ocr_manifest.json`.
 
 ---
 
@@ -148,6 +148,9 @@ models/ocr/
 ├── ja/
 │   ├── japan_PP-OCRv4_rec_mobile.onnx
 │   └── japan_dict.txt
+├── en_opt/                  # English-only, higher precision for Latin scripts
+│   ├── en_PP-OCRv4_rec_mobile.onnx
+│   └── en_dict.txt
 ├── ru/
 │   ├── cyrillic_PP-OCRv3_rec_mobile.onnx
 │   └── cyrillic_dict.txt

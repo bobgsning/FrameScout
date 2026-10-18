@@ -21,6 +21,7 @@ use std::path::Path;
 
 use rusqlite::{params, Connection, Transaction};
 
+use crate::error::{ec1, ERR_DB_EXEC_FAILED};
 use crate::time_util::{utc_now_iso, utc_stamp};
 use super::journal;
 
@@ -673,5 +674,5 @@ fn has_composite_key(conn: &Connection) -> bool {
 /// 写入 schema 版本号。与迁移本体同事务，保证「结构变了但版本没变」不会发生。
 fn set_schema_version(tx: &Transaction, version: u32) -> Result<(), String> {
     tx.execute_batch(&format!("PRAGMA user_version = {};", version))
-        .map_err(|e| e.to_string())
+        .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))
 }

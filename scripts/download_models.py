@@ -7,13 +7,34 @@ and self-checks the RapidOCR engine (PP-OCRv4 ONNX weights ship inside the wheel
 so no download is needed for the default Chinese+English language set).
 
 Usage:
-    python scripts/download_models.py
+    python scripts/download_models.py            # SigLIP 2 + RapidOCR self-check
+    python scripts/download_models.py --bge      # BGE-M3 dense only
+
+Requirements: torch + transformers (ONNX export environment only).
+The inference-worker runtime venv intentionally excludes torch.
 """
 
 import os
 import sys
 import shutil
-import torch
+from typing import Any
+
+
+def _require_torch():
+    """惰性导入 torch：仅 ONNX 导出路径需要（inference-worker 运行 venv 刻意不含 torch）。
+
+    导出环境与运行环境分离：运行 venv 只装 onnxruntime-directml 等推理依赖，
+    torch + transformers 装在独立的导出环境里（见 src/inference-worker/BUILD.md §1.2）。
+    """
+    try:
+        import torch
+        return torch
+    except ImportError:
+        print("❌ torch not installed — ONNX export requires a torch + transformers environment.")
+        print("   Export env (separate from the runtime venv): pip install torch transformers")
+        print("   The inference-worker runtime venv intentionally excludes torch.")
+        sys.exit(1)
+
 
 # Resolve project root (this script lives in FrameScout/scripts/)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,11 +42,16 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 MODELS_DIR = os.path.join(PROJECT_ROOT, "src", "inference-worker", "models")
 
 
-def extract_tensor_features(outputs):
+def extract_tensor_features(outputs: Any) -> Any:
     """
     🌟 Universal Tensor Smart Unpacker:
     Accurately extract Tensors from various HuggingFace ModelOutput/BaseModelOutputWithPooling objects.
+
+    输入/输出均为 Any 是刻意的：HF 各版本的 ModelOutput 字段与返回结构不统一
+    （image_embeds / text_embeds / pooler_output / last_hidden_state / tuple），
+    静态类型无法覆盖；调用方紧接着做张量运算，运行时语义由上面的分支保证。
     """
+    torch = _require_torch()
 
     if isinstance(outputs, torch.Tensor):
         return outputs
@@ -44,6 +70,7 @@ def extract_tensor_features(outputs):
 
 def export_siglip_to_onnx():
     """Download Google SigLIP 2 and export vision/text components to ONNX."""
+    torch = _require_torch()
     try:
         from transformers import AutoProcessor, AutoModel
         import transformers
@@ -116,7 +143,7 @@ def export_siglip_to_onnx():
 
     torch.onnx.export(
         vision_wrapper,
-        dummy_pixel_values,
+        (dummy_pixel_values,),
         vision_onnx_path,
         input_names=["pixel_values"],
         output_names=["image_features"],
@@ -152,7 +179,7 @@ def export_siglip_to_onnx():
 
     torch.onnx.export(
         text_wrapper,
-        dummy_input_ids,
+        (dummy_input_ids,),
         text_onnx_path,
         input_names=["input_ids"],
         output_names=["text_features"],
@@ -214,6 +241,8 @@ def export_bge_m3_to_onnx():
     except ImportError:
         print("❌ transformers not installed. Run: pip install transformers torch")
         sys.exit(1)
+
+    torch = _require_torch()
 
     bge_dir = os.path.join(MODELS_DIR, "bge-m3")
     os.makedirs(bge_dir, exist_ok=True)

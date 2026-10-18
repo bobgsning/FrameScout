@@ -6,6 +6,7 @@
 //   - `get_startup_cleanup_report`：启动期清理汇总（供前端 Toast 告知）
 
 use tauri::State;
+use crate::error::{ec1, ERR_LOCK_POISONED};
 use crate::model_code::{AppState, StartupCleanupReport};
 use crate::storage::app_settings;
 
@@ -34,7 +35,7 @@ impl Default for CleanupSettings {
 /// 读取三档清理策略。缺失项回退默认值。
 #[tauri::command]
 pub async fn get_cleanup_settings(state: State<'_, AppState>) -> Result<CleanupSettings, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     let d = CleanupSettings::default();
     Ok(CleanupSettings {
         event_retention_days: app_settings::get_i64(
@@ -61,7 +62,7 @@ pub async fn set_cleanup_settings(
     state: State<'_, AppState>,
     settings: CleanupSettings,
 ) -> Result<(), String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     app_settings::set_setting(
         &db,
         app_settings::KEY_EVENT_RETENTION_DAYS,
@@ -85,6 +86,6 @@ pub async fn set_cleanup_settings(
 pub async fn get_startup_cleanup_report(
     state: State<'_, AppState>,
 ) -> Result<StartupCleanupReport, String> {
-    let report = state.startup_cleanup.lock().map_err(|e| e.to_string())?.clone();
+    let report = state.startup_cleanup.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?.clone();
     Ok(report)
 }

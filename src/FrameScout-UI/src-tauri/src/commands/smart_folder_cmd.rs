@@ -14,6 +14,10 @@
 
 use rusqlite::params;
 use tauri::State;
+use crate::error::{
+    ec1, ERR_DB_EXEC_FAILED, ERR_DB_PREPARE_FAILED, ERR_DB_QUERY_FAILED, ERR_LOCK_POISONED,
+    ERR_SMART_FOLDER_NOT_FOUND,
+};
 use crate::model_code::{AppState, SmartFolder};
 use super::search_cmd::{match_text, normalize_query};
 use super::search_unified_cmd::search_unified;
@@ -43,7 +47,7 @@ pub async fn save_smart_folder(
             criteria_json
         ],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
     Ok(db.last_insert_rowid())
 }
 
@@ -78,7 +82,7 @@ pub async fn update_smart_folder(
             id
         ],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
     Ok(())
 }
 
@@ -88,9 +92,9 @@ pub async fn get_smart_folders(state: State<'_, AppState>) -> Result<Vec<SmartFo
     let mut stmt = db
         .prepare("SELECT id, name, query_text, use_vector, use_ocr, use_note, use_filename, criteria_json
                   FROM smart_folders ORDER BY id ASC")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
-    let memory = state.memory_db.read().map_err(|e| e.to_string())?;
+    let memory = state.memory_db.read().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     let rows = stmt
         .query_map([], |row| {
@@ -104,7 +108,7 @@ pub async fn get_smart_folders(state: State<'_, AppState>) -> Result<Vec<SmartFo
             let criteria: Option<String> = row.get(7)?;
             Ok((id, name, query_text, v == 1, o == 1, n == 1, f == 1, criteria))
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?;
 
     let mut list = Vec::new();
     let lower_search_list: Vec<(i64, String, String, bool, bool, bool, bool, Option<String>)> =
@@ -183,7 +187,7 @@ pub async fn refresh_smart_folder_count(
     id: i64,
 ) -> Result<usize, String> {
     let (query_text, use_vector, use_ocr, use_note, use_filename, criteria_json) = {
-        let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+        let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
         db.query_row(
             "SELECT query_text, use_vector, use_ocr, use_note, use_filename, criteria_json
              FROM smart_folders WHERE id = ?1",
@@ -198,7 +202,7 @@ pub async fn refresh_smart_folder_count(
                 Ok((q, v == 1, o == 1, n == 1, f == 1, c))
             },
         )
-        .map_err(|e| format!("Smart folder not found: {}", e))?
+        .map_err(|e| ec1(ERR_SMART_FOLDER_NOT_FOUND, e))?
     };
 
     if criteria_json.as_deref().is_some_and(|s| !s.trim().is_empty()) {
@@ -233,7 +237,7 @@ pub async fn refresh_smart_folder_count(
 pub async fn delete_smart_folder(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let db = state.db_conn.lock().unwrap();
     db.execute("DELETE FROM smart_folders WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
     Ok(())
 }
 
@@ -278,10 +282,10 @@ pub async fn import_smart_folders(
     let mut existing: std::collections::HashSet<String> = {
         let mut stmt = db
             .prepare("SELECT name FROM smart_folders")
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
         let rows = stmt
             .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?;
         rows.flatten().collect()
     };
 
@@ -322,7 +326,7 @@ pub async fn import_smart_folders(
                 f.criteria_json
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ec1(ERR_DB_EXEC_FAILED, e))?;
         imported += 1;
         names.push(name);
     }

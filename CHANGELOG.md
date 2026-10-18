@@ -2,7 +2,133 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [3.3.0] - 2026-10-18
+
+本版主题是「**逻辑搜索重构 + 数据安全闭环**」：智能文件夹与搜索栏统一为多条件行求值
+（关键词 / 时间 / 目录 / 批次 / 文件类型 / 基准图，且 / 或 / 排除 / 逐条件阈值），
+补齐数据库备份的「出」（应用内恢复 + 预览 + 恢复前自动备份）、来源批次与入库时间范围分区搜索、
+扫描暂停 / 继续、自动清理策略（给开关并告知）；后端全面改用稳定错误码，文案交予前端 9 语 i18n；
+另以 LGPL 版 FFmpeg 兜底解码 MKV/AVI，并接上视频「切片段」。界面语言自本版起覆盖 9 种。
+
+### Nuitka onedir 模型路径解析回归修复（发布前核查）
+
+**问题**：onedir 打包的 worker 启动即报
+`SigLIP 2 ONNX models missing in …\ai_worker\..\models\siglip2-base`（多了一层父目录），
+同时 `ocr_manifest.json not found`——模型、manifest、ffmpeg 明明都与 exe 同级。溯源发现是
+Batch 53 给 `config.py::get_base_path()` 优先返回 `__compiled__.containing_dir` 引入的回归：
+Nuitka 对 **onedir** 构建会额外 `STRIP_DIRNAME` 一层（`CodeTemplatesConstants.py` 中
+`!ONEFILE_MODE` 分支），使 `__compiled__.containing_dir` 指向 exe 的**父目录**；只有 onefile
+构建它才等于原始 exe 目录。而 `build_nuitka.ps1 -Onedir` 的部署是 `.dist` 平铺（带
+certifi/cv2/numpy 等包目录），正是 onedir 形态，于是 base 被解析到发布根，SigLIP/OCR 全部加载失败。
+旧 v3.2.0 之所以正常，是其旧 `get_base_path` 走 `dirname(__file__)`（Nuitka 不设 `sys.frozen`，
+`__file__` 默认 runtime 模式 = exe 目录）。
+
+**做法**：`get_base_path()` 改为按形态分流——仅 `__compiled__.onefile` 为真时才用
+`__compiled__.containing_dir`；`sys.frozen`（PyInstaller）用 `dirname(sys.executable)`；
+onedir 与源码运行回退 `dirname(__file__)`。四种形态（onefile / onedir / PyInstaller / 源码）
+各走正确路径，并在函数注释里写明 Nuitka 该陷阱。
+
+**验证**：`python -m py_compile config.py` ✅ · 源码态 `get_base_path()` 返回
+`src/inference-worker` ✅ · lint 无告警。需用 `.\build_nuitka.ps1 -Onedir` 重编产物并端到端
+复测一次（启动日志应显示 `…\ai_worker\models\siglip2-base`，带 `ai_worker` 这一层）。
+
+### PR #6 本地采纳：FFmpeg 兜底解码 + 切片段接线 (Batch 53)
+
+**问题**：Windows 下 OpenCV 打不开部分 MKV/AVI 的编解码器 → 视频索引得到 0 帧 →
+前端把「发现但解码失败」误报成 "No new files found"。PR #6 提出了 FFmpeg 兜底方案，
+但混入了「移除 100 帧试用限制」这条红线，且基于过时代码。故不整体合并，本地重做真金部分。
+
+**做法**（`guard.rs` / `license_cmd.rs` 全程LLM Coding不碰）：
+
+1. **FFmpeg 兜底解码（P1）**：`media/video_extractor.py` 重构为「帧来源 + 帧选择」分离——
+   `_iter_opencv_frames`（主路径）与 `_iter_ffmpeg_frames`（兜底）都汇入同一套场景检测 +
+   相邻去重 + 三道护栏，OpenCV 打不开/首帧失败即 fallback。FFmpeg 路径沿用 PR 三处细节
+   （stderr 写临时文件防管道死锁、`np.frombuffer(...).copy()` 保生命周期、单进程
+   `-an/-sn/-dn`），并补 PR 缺的**读超时 watchdog**（30s 读不满一帧即 kill，防卡死
+   worker 单线程 REQ/REP）；固定 256×256（与 OpenCV 原始分辨率的口径差异已在 docstring 注明）。
+2. **Nuitka 路径**：`config.py::get_base_path` 加 `__compiled__.containing_dir` 分支
+   （onefile 下 `sys.executable` 指向临时解压目录，模型/ffmpeg 在原始 exe 同级）。
+3. **LGPL 许可证（P1）**：`build_nuitka.ps1` 自动下载 BtbN `win64-lgpl` 固定版本 + SHA256
+   校验 + `-buildconf` 断言（命中 `--enable-gpl/nonfree` 即 throw）+ 复制 ffmpeg.exe 到
+   worker 同级；绝不取构建机 PATH。补 `THIRD_PARTY_NOTICES.md`（FFmpeg LGPL v2.1+ 条目）与
+   根目录 `COPYING.LGPLv2.1`。
+4. **错误语义（P2）**：`index_cmd.rs` 补「`added_count == 0 && !failed_paths.is_empty()` 返回
+   `Err(ERR_SCAN_ALL_FAILED)`」，把「发现但全解码失败」从误导性的「无新文件」区分出来。
+5. **动态超时 + linger（P3）**：`index_cmd.rs` 新增 `index_rpc_timeout_ms`（按批内视频数 ×
+   `RPC_INDEX_BUDGET_FRAMES_PER_VIDEO=600` × 250ms 追加预算，替代 PR 的 15 分钟/视频）；
+   `zmq_client.rs` 三个 REQ socket 与 `server.py` REP socket 补 `set_linger(0)`，修正
+   `BUILD.md` 声称已设但代码没做的不一致。
+6. **切片段接线**：死命令 `cut_video_clip` 接上前端——卡片与全屏详情都加「切片段」按钮，
+   可调时长（默认 5s，命中帧前后各半），输出到导出目录（未设置回退源视频同目录）。
+   Rust 侧 `ffmpeg_cmd.rs` 新增 `ffmpeg_exe()` 复用 `worker_process::ai_worker_dir()`（与
+   Python 侧同一处解析，不再依赖 PATH），`cut_video_clip` 自动 `create_dir_all` 输出目录。
+   前端新增 `useClip.ts` 单例 + `ClipDialog.vue`，9 语补齐 `clip.*` 与 `ERR_SCAN_ALL_FAILED` 文案。
+
+**收益**：MKV/AVI 编解码失败不再是静默 0 帧；FFmpeg 兜底 + LGPL 护栏 + 明确错误语义闭环；
+死命令「切片段」从 PATH 依赖变成打包自带，卡片/全屏可用。
+
+**验证**：`cargo check --features pro` ✅ · `python -m py_compile` ✅ ·
+`node scripts/check_i18n_backend.mjs` ✅（9 语 × 147 backend 键，含新增 ERR_SCAN_ALL_FAILED）。
+真实 MKV/AVI 样本的 FFmpeg 兜底与切片段端到端验证，需在打包出 ffmpeg.exe 后进行。
+
+**后续已修复（切片段 / 探测健壮性）**：
+- 输出文件保留源容器后缀（同容器 `-c copy`），修复 MKV/WebM 里 VP9/AV1/Opus 等
+  非 MP4 友好编码硬塞 `.mp4` 会失败的问题（LGPL 构建无 libx264，无法重编码 mp4）。
+- `probe_ffmpeg` 从「能 spawn」改为同时校验退出码，损坏但可启动的 ffmpeg 不再误报可用。
+- FFmpeg 中途卡死不再整体判失败：0 帧仍 `raise`，已产出部分帧则保留并打警告。
+- `build_nuitka.ps1` 的 buildconf 断言踩了 PowerShell 5.1 的坑：`$ErrorActionPreference="Stop"`
+  下 `2>&1` 捕获 ffmpeg 的 stderr（banner/配置）会触发 NativeCommandError 中断打包；现临时
+  降级 EAP 再恢复。
+
+### 第十二轮 后端文案改为错误码，打通真正的 i18n (Batch 52)
+
+**问题**：后端把英文整句直接 `Err(...)` / `emit` 甩给前端。前端 `useToast.localizeError`
+只能对 8 串硬编码英文做子串匹配来「翻译」，其余全部走兜底分支——于是中文界面里
+呈现的是「中文分类前缀 + 英文错误原文」，且后端一改文案前端立刻失配。
+
+**做法**：后端只回**稳定的码**，文案完全交给前端 i18n。
+
+1. **新增集中式码表 `src-tauri/src/error.rs`**：定义 146 个码（`ERR_*` 错误 117 /
+   `STATUS_*` 状态 22 / `TAG_*` 徽标 6 / `MSG_*` 提示 1）与构造函数 `ec / ec1 / ec2 / ec3`。
+   传输格式 `CODE` 或 `CODE|参数0|参数1...`，参数用 `{0}` `{1}` `{2}` 插值，
+   底层透传的原生错误用 `{detail}`（= 所有参数重新拼接，避免原文含 `|` 被切碎）。
+2. **后端 ~270 处英文文案全部改码**，覆盖 `commands/`、`storage/`、`services/`、`license/`
+   四类出口：
+   - 命令返回的 `Err(...)` / `map_err(...)`；
+   - `scan-progress`、`engine-status` 事件 payload 的 `status` / `message` / `file_path`；
+   - 写库并回传前端的 `TextIngestFailure.error`、`ReindexFailure.error`；
+   - `matched_tags` 徽标（改为 `TAG_*`）。
+   `println!` / `fs_trace!` / `panic!` / `.expect()` 的文案**不动**（只进终端或崩溃路径，不达前端）。
+3. **前端解析层**：核心实现 `i18n/index.ts` 的 `localizeCode()`（需直接访问 i18n 实例），
+   `src/utils/backendText.ts` 只做转发。按 `|` 切分取码，查 i18n 的 `backend.*`；
+   非码内容（真实路径、普通句子）原样返回，故可安全用于 `file_path` 这类
+   「有时是路径、有时是状态文案」的字段。查不到时退回原串，绝不把裸 key 给用户看。
+4. **接入消费点**：`useToast.localizeError`（删除旧的英文子串白名单）、
+   `useScanner`（扫描状态）、`useEngineStatus`（引擎消息）、`ImageCard` / `VideoCard`、
+   `exporters.ts`（Markdown 导出的徽标）、`useLicense`（授权错误）。
+5. **`t()` 自动解析 `{err}` 参数**：全项目有 ~50 处形如 `t('xxx.failed', { err })` 的模板。
+   若逐个包一层极易漏改，故在 `t()` 内部统一把 `err` 过一遍 `localizeCode`——
+   一处改动覆盖全部调用点（已确认无模板字符串写法漏网）。
+6. **9 语文案全部补齐**：`en` / `zh-CN` / `zh-TW` / `ja` / `ru` / `ko` / `de` / `fr` / `es`
+   各 146 个 `backend.*` 键，与后端 `error.rs` 逐一对齐。
+
+#### 核查中发现并修掉的 3 个问题（子 Agent 全量复查）
+
+7. **P0：locale 文件里 `backend` 键重复**。各语言包末尾**本来就有**一个同名 `backend` 块
+   （28 个旧键，全项目 0 引用）。`JSON.parse` 对重复键保留最后一个 ⇒ 新码表被整体覆盖，
+   用户会看到 `ERR_DB_QUERY_FAILED|database is locked` 这类裸码。
+   已删除各文件末尾那个死块（一次性脚本处理，9 个文件）。
+8. **`useLicense.friendlyActivationError` 失效**：仍在用旧英文子串匹配（`expired` / `email` /
+   `Signature`…），而后端现在回的是大写码，全部落到兜底分支。已改为按码解析。
+9. **新增校验脚本 `scripts/check_i18n_backend.mjs`**：核对 9 个语言包的键集合是否与 `en`
+   一致、**是否有重复根级键**、以及 `{0}/{1}/{detail}` 占位符是否一一对应。
+   其中重复键检测是必需的——`JSON.parse` 会静默吞掉重复键，只看解析成功与否发现不了。
+
+**收益**：后端与文案彻底解耦——改文案不必动 Rust，加语言不必动后端。
+
+**验证**：`cargo check` ✅ · `cargo check --features pro` ✅ · `npm run type-check` ✅ ·
+`node scripts/check_i18n_backend.mjs` ✅（9 语 × 146 键，无缺失 / 无多余 / 无占位符差异 /
+无重复键）。
 
 ### 第十一轮 代码核查修复与补齐 (Batch 51)
 
@@ -225,7 +351,7 @@ All notable changes to this project will be documented in this file.
       - 通过脚本比对发现 `ja/ru/ko/de/fr/es` 六语各缺 **92 个 key**（第六轮 + 第七轮新增的「自动清理、恢复、灵敏度、折叠、条件行 cond 整段、报告重试、来源筛选」等）。
       - 已为六语各补齐这 92 条翻译（日语/俄语/韩语/德语/法语/西班牙语），临时脚本用完已删除。
 
-   ## 验证
+   #### 验证
    - 9 个 locale JSON 全部合法 ✅
    - 六语相对 en 无缺失 key ✅
    - `npm run type-check` ✅

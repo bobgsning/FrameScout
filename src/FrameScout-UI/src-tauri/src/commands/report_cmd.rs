@@ -7,6 +7,7 @@
 use tauri::State;
 
 use crate::fs_trace;
+use crate::error::{ec1, ERR_DB_PREPARE_FAILED, ERR_DB_QUERY_FAILED, ERR_LOCK_POISONED};
 use crate::model_code::{AppState, BatchReport};
 
 /// 取最近的批次记录（按 id 倒序，最新的在前）。
@@ -24,7 +25,7 @@ pub async fn list_scan_reports(
     limit: Option<u32>,
     batch_type: Option<String>,
 ) -> Result<Vec<BatchReport>, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
     let limit = limit.unwrap_or(30).clamp(1, 200);
 
     // 先多取一批（批次数量少、不会超过 500），Rust 侧按类型过滤后再截断到 limit，
@@ -35,11 +36,11 @@ pub async fn list_scan_reports(
             "SELECT id, batch_id, batch_type, started_at, finished_at, status, summary_json
              FROM batches ORDER BY id DESC LIMIT ?1",
         )
-        .map_err(|e| format!("Prepare error: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let mut items: Vec<BatchReport> = stmt
         .query_map(rusqlite::params![fetch_limit], map_batch_report)
-        .map_err(|e| format!("Query error: {}", e))?
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
         .flatten()
         .filter(|b| match batch_type.as_deref() {
             Some(bt) if !bt.is_empty() => b.batch_type == bt,
@@ -80,7 +81,7 @@ pub async fn list_timeline(
     state: State<'_, AppState>,
     days: Option<i64>,
 ) -> Result<Vec<TimelineDay>, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     // 默认返回最近 365 天
     let lookback = days.unwrap_or(365);
@@ -102,7 +103,7 @@ pub async fn list_timeline(
              GROUP BY day
              ORDER BY day DESC",
         )
-        .map_err(|e| format!("Prepare error: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let items: Vec<TimelineDay> = stmt
         .query_map([cutoff], |row| {
@@ -112,7 +113,7 @@ pub async fn list_timeline(
                 timestamp: row.get(2)?,
             })
         })
-        .map_err(|e| format!("Query error: {}", e))?
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -122,7 +123,7 @@ pub async fn list_timeline(
 /// P2-4：「去年今天」——查询一年前同日入库的文件数。
 #[tauri::command]
 pub async fn last_year_today_count(state: State<'_, AppState>) -> Result<i64, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     // 一年前的今天：减 365 天，取当天的 first_seen 事件数
     let count: i64 = db
@@ -150,7 +151,7 @@ pub async fn list_files_by_day(
     state: State<'_, AppState>,
     date: String,
 ) -> Result<Vec<TimelineFile>, String> {
-    let db = state.db_conn.lock().map_err(|e| e.to_string())?;
+    let db = state.db_conn.lock().map_err(|e| ec1(ERR_LOCK_POISONED, e))?;
 
     let mut stmt = db
         .prepare(
@@ -161,7 +162,7 @@ pub async fn list_files_by_day(
              GROUP BY path
              ORDER BY ts DESC",
         )
-        .map_err(|e| format!("Prepare error: {}", e))?;
+        .map_err(|e| ec1(ERR_DB_PREPARE_FAILED, e))?;
 
     let items: Vec<TimelineFile> = stmt
         .query_map([&date], |row| {
@@ -170,7 +171,7 @@ pub async fn list_files_by_day(
                 timestamp: row.get(1)?,
             })
         })
-        .map_err(|e| format!("Query error: {}", e))?
+        .map_err(|e| ec1(ERR_DB_QUERY_FAILED, e))?
         .filter_map(|r| r.ok())
         .collect();
 
