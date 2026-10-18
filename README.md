@@ -450,6 +450,7 @@ FrameScout core is licensed under **Apache License 2.0**. See [LICENSE](LICENSE)
 As a **thank-you for your support** — and to make debugging easier — here is a complimentary **FrameScout Pro** license key. It removes the 100-frame trial limit for the full product.
 
 - **Valid until**: 2027-01-01 (version-locked to v3.3.0)
+- **License email**: `framescout-offline_ai_search-global`
 - **How to activate**: open **Settings → License**, paste the key below, and confirm.
 
 ```text

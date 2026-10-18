@@ -448,6 +448,7 @@ FrameScout 核心基于 **Apache License 2.0** 授权。详见 [LICENSE](LICENSE
 为**感谢支持**，也为了方便调试，这里提供一把致谢性质的 **FrameScout Pro** 许可证密钥，可解除 100 帧试用限制，使用完整功能。
 
 - **有效期至**：2027-01-01（锁定 v3.3.0 版本）
+- **许可证邮箱/标识**：`framescout-offline_ai_search-global`
 - **激活方式**：打开 **设置 → 许可证**，粘贴下方密钥并确认。
 
 ```text
