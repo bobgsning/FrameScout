@@ -26,7 +26,7 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 🤝 [Contributing](CONTRIBUTING.md)
 
 > 🆕 **v3.3.0 is here!** The biggest release yet — a full logic-search refactor plus a data-safety pass:
-> - 🧮 **Condition-based search** — build a query as visible rows (keyword / date / batch / file type / seed image) combined with AND / OR / exclude and per-condition thresholds. The old symbol dialect (`-` / `@` / `|`) is gone; what you type is taken literally. Smart folders now save the complete condition set and run the exact same evaluator as the search bar.
+> - 🧮 **Condition-based search** — build a query as visible rows (keyword / date / batch / file type / seed image) combined with AND / OR / exclude and per-condition thresholds. What you type is taken literally — there's no symbol syntax to learn; `e-mail`, `-5°C`, and `会议@2024` are matched exactly as written. Smart folders now save the complete condition set and run the exact same evaluator as the search bar.
 > - 💾 **Backup & restore** — one-click timestamped backups with rotation and integrity check, plus in-app restore: validity-checked preview with a frame-count comparison, and an automatic backup taken before restoring.
 > - 🗂️ **Partitioned search** — filter results by source batch, root-path prefix, or index-time range (also available on image search).
 > - 🧹 **Automatic cleanup policy** — event retention & backup rotation with toggles and a startup report, so nothing is ever deleted silently.
@@ -42,6 +42,20 @@ Type *"sunset beach with friends"*, paste a reference image, or search by text i
 ---
 
 > **Just want to try it?** Download the latest Windows executable from the [releases page](https://github.com/bobgsning/FrameScout/releases) — no installation required. Unzip and run. The prebuilt app includes a free trial of **100 indexed frames** (videos count per extracted frame); the source is fully open under Apache 2.0 — the trial limit lives in the source too, so you're free to modify or remove it and [build your own version](#-quick-start-development).
+
+---
+
+## 🧮 Logic Search — query your archive the way you think
+
+Most "AI search" makes you type one sentence and hope. FrameScout lets you **compose a query from visible condition rows** and join them with **AND / OR / exclude**, each row with its own **threshold**:
+
+- **Keyword** — match by meaning, OCR text, note, or filename
+- **Date** — e.g. *"only things from 2022"*
+- **Batch** — the import/source a file came from
+- **Type** — image or video
+- **Seed image** — find visuals similar to a reference picture
+
+Looking for *"the Tokyo trip with the red sign, but no people"*? That's three rows, not a wish. And because there's **no symbol syntax to learn**, everything you type is matched literally — `e-mail`, `-5°C`, and `会议@2024` are searched exactly as written. Saved searches (Smart Folders) store the very same condition set and run through the same evaluator as the search bar, so a folder is just a query you don't have to retype.
 
 ---
 
@@ -364,14 +378,14 @@ Theme: **logic-search refactor + data-safety closure**. Full record in [CHANGELO
 
 **Search**
 
-- [x] Condition-based search — visible condition rows (keyword / date / batch / file type / seed image) with AND / OR / exclude and per-condition thresholds; the old `-` / `@` / `|` symbol dialect is removed and input is taken literally (`e-mail`, `-5°C`, `会议@2024` all search as typed)
-- [x] Smart folders save the **complete condition set** (`criteria_json`, migration M011) and run the same evaluator as the search bar; legacy folders keep working unchanged
+- [x] Condition-based search — visible condition rows (keyword / date / batch / file type / seed image) with AND / OR / exclude and per-condition thresholds; input is taken literally — no symbol syntax to learn (`e-mail`, `-5°C`, `会议@2024` all search as typed)
+- [x] Smart folders save the **complete condition set** (`criteria_json`, migration M011) and run the same evaluator as the search bar; existing folders keep working unchanged
 - [x] Smart folder import / export (JSON) with name dedup — never silently overwrites
 - [x] Partition search — source batch / root-path prefix / index-time range filters (also on image search)
 - [x] Sort selector — by relevance / index time / filename, with global ordering across pages
 - [x] 「试算」 count-only preview button for semantic conditions
 - [x] Search explainability — honest ✓ literal-hit bars (no fabricated percentages), adjustable relevance sensitivity (loose / standard / strict), low-score fold toggle, disclosed query rules
-- [x] Retired the legacy `search_images` / `execute_smart_folder` path — one engine, one semantics
+- [x] Retired the previous `search_images` / `execute_smart_folder` path — one engine, one semantics
 
 **Data safety**
 
